@@ -3,6 +3,8 @@ export interface GitHubConfig {
   baseURL?: string;
   userAgent?: string;
   timeout?: number;
+  cacheEnabled?: boolean;
+  cacheTTL?: number;
 }
 
 export interface RateLimitInfo {
@@ -67,6 +69,7 @@ export class GitHubTimeoutError extends GitHubRequestError {}
 
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1_000;
+const DEFAULT_CACHE_TTL_MS = 90_000;
 
 export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
   const state: {
@@ -78,9 +81,13 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
       baseURL: normalizeBaseURL(config.baseURL ?? "https://api.github.com"),
       userAgent: config.userAgent ?? "patty-pr-minder/1.0",
       timeout: config.timeout ?? 10_000,
+      cacheEnabled: config.cacheEnabled ?? true,
+      cacheTTL: config.cacheTTL ?? DEFAULT_CACHE_TTL_MS,
     },
     rateLimit: null,
   };
+
+  const cache = createResponseCache(state.config);
 
   const ensureToken = () => {
     if (!state.config.token) {
@@ -106,10 +113,27 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     repo: string,
     prNumber: number,
   ): Promise<PRData | null> => {
+    const path = buildPRPath(owner, repo, prNumber);
+    const cacheKey = cache.enabled ? buildCacheKey("pr", path) : null;
+
+    if (cacheKey) {
+      const cached = getCachedValue<PRData | null>(cache, cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     try {
-      return await request<PRData>(buildPRPath(owner, repo, prNumber));
+      const pr = await request<PRData>(path);
+      if (cacheKey) {
+        setCachedValue(cache, cacheKey, pr);
+      }
+      return pr;
     } catch (error) {
       if (error instanceof GitHubNotFoundError) {
+        if (cacheKey) {
+          setCachedValue(cache, cacheKey, null);
+        }
         return null;
       }
       throw error;
@@ -132,7 +156,20 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     params.set("page", String(options.page ?? 1));
 
     const path = `${buildPRPath(owner, repo)}?${params.toString()}`;
-    return await request<PRData[]>(path, { method: "GET" });
+    const cacheKey = cache.enabled ? buildCacheKey("prs", path) : null;
+
+    if (cacheKey) {
+      const cached = getCachedValue<PRData[]>(cache, cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
+    const prs = await request<PRData[]>(path, { method: "GET" });
+    if (cacheKey) {
+      setCachedValue(cache, cacheKey, prs);
+    }
+    return prs;
   };
 
   const validateToken = async (): Promise<boolean> => {
@@ -154,6 +191,16 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     async getRateLimit(): Promise<RateLimitInfo | null> {
       return await Promise.resolve(state.rateLimit);
     },
+  };
+}
+
+function createResponseCache(config: Required<GitHubConfig>): ResponseCache {
+  const ttlMs = Math.max(0, config.cacheTTL);
+  const enabled = config.cacheEnabled && ttlMs > 0;
+  return {
+    enabled,
+    ttlMs: enabled ? ttlMs : 0,
+    entries: new Map(),
   };
 }
 
@@ -516,4 +563,55 @@ function clamp(value: number, min: number, max: number): number {
 
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface ResponseCache {
+  enabled: boolean;
+  ttlMs: number;
+  entries: Map<string, CacheEntry>;
+}
+
+interface CacheEntry {
+  value: unknown;
+  expiresAt: number;
+}
+
+function buildCacheKey(...parts: (string | number)[]): string {
+  return parts.map((part) => String(part)).join("::");
+}
+
+function getCachedValue<T>(
+  cache: ResponseCache,
+  key: string,
+): T | undefined {
+  if (!cache.enabled) {
+    return undefined;
+  }
+
+  const entry = cache.entries.get(key);
+  if (!entry) {
+    return undefined;
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    cache.entries.delete(key);
+    return undefined;
+  }
+
+  return entry.value as T;
+}
+
+function setCachedValue<T>(
+  cache: ResponseCache,
+  key: string,
+  value: T,
+): void {
+  if (!cache.enabled) {
+    return;
+  }
+
+  cache.entries.set(key, {
+    value,
+    expiresAt: Date.now() + cache.ttlMs,
+  });
 }
