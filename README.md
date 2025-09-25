@@ -21,6 +21,17 @@ Slack bot that tracks GitHub PR status and provides team visibility.
 ### Quick Start
 
 ```bash
+# Configure GitHub access token (one-time)
+cp sample.env .env
+# Edit .env and edit GITHUB_TOKEN to use yours.
+
+# If you have the gh cli:
+gh auth token >> .env
+
+# Optional: enable live GitHub API test (set to 1 to run)
+# via command or adding to .env file.
+TEST_GH_API=1 deno test --env-file=.env functions/github_client_test.ts
+
 # Check code quality
 deno task test
 
