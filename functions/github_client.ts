@@ -65,6 +65,9 @@ export class GitHubUnprocessableEntityError extends GitHubRequestError {}
 export class GitHubServerError extends GitHubRequestError {}
 export class GitHubTimeoutError extends GitHubRequestError {}
 
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 1_000;
+
 export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
   const state: {
     config: Required<GitHubConfig>;
@@ -93,127 +96,9 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     path: string,
     init: RequestInit = {},
   ): Promise<T> => {
-    const url = new URL(path, state.config.baseURL);
-    const headers = new Headers(init.headers ?? {});
-
     ensureToken();
-    headers.set("Authorization", `token ${state.config.token}`);
-    headers.set("Accept", "application/vnd.github+json");
-    headers.set("User-Agent", state.config.userAgent);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      state.config.timeout,
-    );
-
-    try {
-      const response = await fetch(url, {
-        ...init,
-        headers,
-        signal: controller.signal,
-      });
-
-      updateRateLimitFromHeaders(response.headers, state);
-
-      if (response.ok) {
-        if (response.status === 204) {
-          return undefined as T;
-        }
-
-        const contentType = response.headers.get("content-type") ?? "";
-        if (!contentType.includes("application/json")) {
-          return (await response.text()) as unknown as T;
-        }
-
-        return (await response.json()) as T;
-      }
-
-      const errorBody = await parseErrorBody(response);
-      const errorMessage = extractErrorMessage(errorBody) ??
-        `GitHub request failed with status ${response.status}`;
-      const documentationUrl = extractDocumentationUrl(errorBody);
-
-      switch (response.status) {
-        case 401:
-          throw new GitHubUnauthorizedError(
-            errorMessage,
-            response.status,
-            response.statusText,
-            documentationUrl,
-            errorBody,
-          );
-        case 403:
-          throw new GitHubForbiddenError(
-            errorMessage,
-            response.status,
-            response.statusText,
-            documentationUrl,
-            errorBody,
-          );
-        case 404:
-          throw new GitHubNotFoundError(
-            errorMessage,
-            response.status,
-            response.statusText,
-            documentationUrl,
-            errorBody,
-          );
-        case 422:
-          throw new GitHubUnprocessableEntityError(
-            errorMessage,
-            response.status,
-            response.statusText,
-            documentationUrl,
-            errorBody,
-          );
-        default:
-          if (response.status >= 500) {
-            throw new GitHubServerError(
-              errorMessage,
-              response.status,
-              response.statusText,
-              documentationUrl,
-              errorBody,
-            );
-          }
-
-          throw new GitHubRequestError(
-            errorMessage,
-            response.status,
-            response.statusText,
-            documentationUrl,
-            errorBody,
-          );
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw new GitHubTimeoutError(
-          `GitHub request timed out after ${state.config.timeout}ms`,
-          408,
-          "Request Timeout",
-        );
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  };
-
-  const buildPRPath = (
-    owner: string,
-    repo: string,
-    prNumber?: number,
-  ): string => {
-    const sanitizedOwner = sanitizeIdentifier(owner, "owner");
-    const sanitizedRepo = sanitizeIdentifier(repo, "repo");
-
-    if (prNumber !== undefined) {
-      const sanitizedNumber = sanitizePRNumber(prNumber);
-      return `/repos/${sanitizedOwner}/${sanitizedRepo}/pulls/${sanitizedNumber}`;
-    }
-
-    return `/repos/${sanitizedOwner}/${sanitizedRepo}/pulls`;
+    await respectRateLimit(state.rateLimit);
+    return await attemptRequest<T>(path, init, state, 1);
   };
 
   const fetchPR = async (
@@ -272,6 +157,232 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
   };
 }
 
+async function attemptRequest<T>(
+  path: string,
+  init: RequestInit,
+  state: {
+    config: Required<GitHubConfig>;
+    rateLimit: RateLimitInfo | null;
+  },
+  attempt: number,
+): Promise<T> {
+  const url = new URL(path, state.config.baseURL);
+  const headers = new Headers(init.headers ?? {});
+
+  headers.set("Authorization", `token ${state.config.token}`);
+  headers.set("Accept", "application/vnd.github+json");
+  headers.set("User-Agent", state.config.userAgent);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), state.config.timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
+
+    updateRateLimitFromHeaders(response.headers, state);
+
+    if (response.ok) {
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        return (await response.text()) as unknown as T;
+      }
+
+      return (await response.json()) as T;
+    }
+
+    const errorBody = await parseErrorBody(response);
+    const errorMessage = extractErrorMessage(errorBody) ??
+      `GitHub request failed with status ${response.status}`;
+    const documentationUrl = extractDocumentationUrl(errorBody);
+
+    const error = createErrorForStatus(
+      response.status,
+      errorMessage,
+      response.statusText,
+      documentationUrl,
+      errorBody,
+    );
+
+    if (shouldRetry(error, attempt, state.rateLimit)) {
+      const delayMs = nextBackoffDelay(attempt, state.rateLimit);
+      await delay(delayMs);
+      return await attemptRequest<T>(path, init, state, attempt + 1);
+    }
+
+    throw error;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      const timeoutError = new GitHubTimeoutError(
+        `GitHub request timed out after ${state.config.timeout}ms`,
+        408,
+        "Request Timeout",
+      );
+      if (shouldRetry(timeoutError, attempt, state.rateLimit)) {
+        const delayMs = nextBackoffDelay(attempt, state.rateLimit);
+        await delay(delayMs);
+        return await attemptRequest<T>(path, init, state, attempt + 1);
+      }
+      throw timeoutError;
+    }
+
+    if (error instanceof GitHubRequestError) {
+      if (shouldRetry(error, attempt, state.rateLimit)) {
+        const delayMs = nextBackoffDelay(attempt, state.rateLimit);
+        await delay(delayMs);
+        return await attemptRequest<T>(path, init, state, attempt + 1);
+      }
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === "TypeError") {
+      if (shouldRetry(null, attempt, state.rateLimit)) {
+        const delayMs = nextBackoffDelay(attempt, state.rateLimit);
+        await delay(delayMs);
+        return await attemptRequest<T>(path, init, state, attempt + 1);
+      }
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function createErrorForStatus(
+  status: number,
+  message: string,
+  statusText: string,
+  documentationUrl: string | undefined,
+  errorBody: unknown,
+): GitHubRequestError {
+  switch (status) {
+    case 401:
+      return new GitHubUnauthorizedError(
+        message,
+        status,
+        statusText,
+        documentationUrl,
+        errorBody,
+      );
+    case 403:
+      return new GitHubForbiddenError(
+        message,
+        status,
+        statusText,
+        documentationUrl,
+        errorBody,
+      );
+    case 404:
+      return new GitHubNotFoundError(
+        message,
+        status,
+        statusText,
+        documentationUrl,
+        errorBody,
+      );
+    case 422:
+      return new GitHubUnprocessableEntityError(
+        message,
+        status,
+        statusText,
+        documentationUrl,
+        errorBody,
+      );
+    default:
+      if (status >= 500) {
+        return new GitHubServerError(
+          message,
+          status,
+          statusText,
+          documentationUrl,
+          errorBody,
+        );
+      }
+      return new GitHubRequestError(
+        message,
+        status,
+        statusText,
+        documentationUrl,
+        errorBody,
+      );
+  }
+}
+
+function shouldRetry(
+  error: GitHubRequestError | null,
+  attempt: number,
+  rateLimit: RateLimitInfo | null,
+): boolean {
+  if (attempt >= MAX_RETRIES) {
+    return false;
+  }
+
+  if (rateLimit && rateLimit.remaining === 0) {
+    return true;
+  }
+
+  if (!error) {
+    return true;
+  }
+
+  if (
+    error instanceof GitHubUnauthorizedError ||
+    error instanceof GitHubNotFoundError ||
+    error instanceof GitHubUnprocessableEntityError
+  ) {
+    return false;
+  }
+
+  if (error instanceof GitHubForbiddenError) {
+    return rateLimit?.remaining === 0;
+  }
+
+  if (
+    error instanceof GitHubServerError || error instanceof GitHubTimeoutError
+  ) {
+    return true;
+  }
+
+  return error.status >= 500;
+}
+
+function nextBackoffDelay(
+  attempt: number,
+  rateLimit: RateLimitInfo | null,
+): number {
+  const backoff = BASE_BACKOFF_MS * 2 ** (attempt - 1);
+  if (rateLimit && rateLimit.remaining === 0) {
+    const now = Date.now();
+    const resetMs = rateLimit.reset * 1_000;
+    return Math.max(resetMs - now, backoff);
+  }
+  return backoff;
+}
+
+async function respectRateLimit(
+  rateLimit: RateLimitInfo | null,
+): Promise<void> {
+  if (!rateLimit || rateLimit.remaining > 0) {
+    return;
+  }
+
+  const delayMs = Math.max(
+    rateLimit.reset * 1_000 - Date.now(),
+    BASE_BACKOFF_MS,
+  );
+  if (delayMs > 0) {
+    await delay(delayMs);
+  }
+}
+
 function normalizeBaseURL(baseURL: string): string {
   return baseURL.endsWith("/") ? baseURL : `${baseURL}/`;
 }
@@ -314,6 +425,22 @@ function sanitizePRNumber(prNumber: number): number {
     );
   }
   return prNumber;
+}
+
+function buildPRPath(
+  owner: string,
+  repo: string,
+  prNumber?: number,
+): string {
+  const sanitizedOwner = sanitizeIdentifier(owner, "owner");
+  const sanitizedRepo = sanitizeIdentifier(repo, "repo");
+
+  if (prNumber !== undefined) {
+    const sanitizedNumber = sanitizePRNumber(prNumber);
+    return `/repos/${sanitizedOwner}/${sanitizedRepo}/pulls/${sanitizedNumber}`;
+  }
+
+  return `/repos/${sanitizedOwner}/${sanitizedRepo}/pulls`;
 }
 
 function updateRateLimitFromHeaders(
@@ -385,4 +512,8 @@ function parseNumber(value: string | null): number | null {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
