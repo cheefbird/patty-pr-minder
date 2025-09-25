@@ -152,7 +152,7 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     fetchPRs,
     validateToken,
     async getRateLimit(): Promise<RateLimitInfo | null> {
-      return state.rateLimit;
+      return await Promise.resolve(state.rateLimit);
     },
   };
 }
