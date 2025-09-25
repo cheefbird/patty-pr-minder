@@ -25,10 +25,24 @@ export interface PRData {
 }
 
 export interface GitHubClient {
-  fetchPR(owner: string, repo: string, prNumber: number): Promise<PRData | null>;
-  fetchPRs(owner: string, repo: string): Promise<PRData[]>;
+  fetchPR(
+    owner: string,
+    repo: string,
+    prNumber: number,
+  ): Promise<PRData | null>;
+  fetchPRs(
+    owner: string,
+    repo: string,
+    options?: FetchPROptions,
+  ): Promise<PRData[]>;
   validateToken(): Promise<boolean>;
   getRateLimit(): Promise<RateLimitInfo | null>;
+}
+
+export interface FetchPROptions {
+  state?: "open" | "closed" | "all";
+  perPage?: number;
+  page?: number;
 }
 
 export class GitHubRequestError extends Error {
@@ -65,19 +79,33 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     rateLimit: null,
   };
 
-  const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const ensureToken = () => {
+    if (!state.config.token) {
+      throw new GitHubUnauthorizedError(
+        "GitHub token is missing. Configure GITHUB_TOKEN before making API requests.",
+        401,
+        "Unauthorized",
+      );
+    }
+  };
+
+  const request = async <T>(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<T> => {
     const url = new URL(path, state.config.baseURL);
     const headers = new Headers(init.headers ?? {});
 
-    if (state.config.token) {
-      headers.set("Authorization", `token ${state.config.token}`);
-    }
-
+    ensureToken();
+    headers.set("Authorization", `token ${state.config.token}`);
     headers.set("Accept", "application/vnd.github+json");
     headers.set("User-Agent", state.config.userAgent);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), state.config.timeout);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      state.config.timeout,
+    );
 
     try {
       const response = await fetch(url, {
@@ -172,16 +200,72 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     }
   };
 
+  const buildPRPath = (
+    owner: string,
+    repo: string,
+    prNumber?: number,
+  ): string => {
+    const sanitizedOwner = sanitizeIdentifier(owner, "owner");
+    const sanitizedRepo = sanitizeIdentifier(repo, "repo");
+
+    if (prNumber !== undefined) {
+      const sanitizedNumber = sanitizePRNumber(prNumber);
+      return `/repos/${sanitizedOwner}/${sanitizedRepo}/pulls/${sanitizedNumber}`;
+    }
+
+    return `/repos/${sanitizedOwner}/${sanitizedRepo}/pulls`;
+  };
+
+  const fetchPR = async (
+    owner: string,
+    repo: string,
+    prNumber: number,
+  ): Promise<PRData | null> => {
+    try {
+      return await request<PRData>(buildPRPath(owner, repo, prNumber));
+    } catch (error) {
+      if (error instanceof GitHubNotFoundError) {
+        return null;
+      }
+      throw error;
+    }
+  };
+
+  const fetchPRs = async (
+    owner: string,
+    repo: string,
+    options: FetchPROptions = {},
+  ): Promise<PRData[]> => {
+    const params = new URLSearchParams();
+    const stateParam = options.state ?? "open";
+
+    if (stateParam !== "open") {
+      params.set("state", stateParam);
+    }
+
+    params.set("per_page", String(clamp(options.perPage ?? 30, 1, 100)));
+    params.set("page", String(options.page ?? 1));
+
+    const path = `${buildPRPath(owner, repo)}?${params.toString()}`;
+    return await request<PRData[]>(path, { method: "GET" });
+  };
+
+  const validateToken = async (): Promise<boolean> => {
+    try {
+      await request("/user", { method: "GET" });
+      return true;
+    } catch (error) {
+      if (error instanceof GitHubUnauthorizedError) {
+        return false;
+      }
+      throw error;
+    }
+  };
+
   return {
-    async fetchPR(_owner: string, _repo: string, _prNumber: number): Promise<PRData | null> {
-      throw new Error("fetchPR is not implemented yet");
-    },
-    async fetchPRs(_owner: string, _repo: string): Promise<PRData[]> {
-      throw new Error("fetchPRs is not implemented yet");
-    },
-    async validateToken(): Promise<boolean> {
-      return state.config.token.length > 0;
-    },
+    fetchPR,
+    fetchPRs,
+    validateToken,
     async getRateLimit(): Promise<RateLimitInfo | null> {
       return state.rateLimit;
     },
@@ -190,6 +274,46 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
 
 function normalizeBaseURL(baseURL: string): string {
   return baseURL.endsWith("/") ? baseURL : `${baseURL}/`;
+}
+
+function sanitizeIdentifier(value: string, field: "owner" | "repo"): string {
+  if (!value || typeof value !== "string") {
+    throw new GitHubRequestError(
+      `Invalid ${field} provided.`,
+      422,
+      "Unprocessable Entity",
+    );
+  }
+
+  const sanitized = value.trim();
+  if (!sanitized.length) {
+    throw new GitHubRequestError(
+      `${field} cannot be empty.`,
+      422,
+      "Unprocessable Entity",
+    );
+  }
+
+  if (!/^[A-Za-z0-9_.-]+$/.test(sanitized)) {
+    throw new GitHubRequestError(
+      `${field} contains invalid characters.`,
+      422,
+      "Unprocessable Entity",
+    );
+  }
+
+  return sanitized;
+}
+
+function sanitizePRNumber(prNumber: number): number {
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    throw new GitHubRequestError(
+      "Pull request number must be a positive integer.",
+      422,
+      "Unprocessable Entity",
+    );
+  }
+  return prNumber;
 }
 
 function updateRateLimitFromHeaders(
@@ -244,7 +368,8 @@ function extractErrorMessage(body: unknown): string | null {
 
 function extractDocumentationUrl(body: unknown): string | undefined {
   if (body && typeof body === "object" && "documentation_url" in body) {
-    const documentationUrl = (body as { documentation_url?: unknown }).documentation_url;
+    const documentationUrl =
+      (body as { documentation_url?: unknown }).documentation_url;
     return typeof documentationUrl === "string" ? documentationUrl : undefined;
   }
   return undefined;
@@ -256,4 +381,8 @@ function parseNumber(value: string | null): number | null {
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
