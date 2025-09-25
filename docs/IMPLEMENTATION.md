@@ -1,7 +1,15 @@
 # Patty PR Minder - Implementation Plan
 
 ## Overview
-This document breaks down the implementation of Patty PR Minder from the current Slack starter template into a fully-featured PR tracking bot. The plan is organized into 5 phases, each building upon the previous one.
+This document breaks down the implementation of Patty PR Minder from the current Slack starter template into a fully-featured PR tracking bot. The plan is organized into 5 phases, each building upon the previous one, plus supporting infrastructure tasks.
+
+### Milestones
+- **Phase 1: Foundation & Architecture** (Weeks 1-2) - Issues #1-6, #16-17
+- **Phase 2: Core PR Detection & Tracking** (Weeks 3-4) - Issues #7-11
+- **Phase 3: Advanced Features** (Weeks 5-6) - Future Issues
+- **Phase 4: Production Readiness** (Weeks 7-8) - Future Issues
+- **Phase 5: Enhancement & Polish** (Weeks 9-10) - Future Issues
+- **Infrastructure** (Ongoing) - CI/CD and deployment automation (Issue #18)
 
 ---
 
@@ -540,6 +548,119 @@ interface EventLog {
 - **Channel-First Design**: All operations scoped to individual channels
 - **Queue-Based Processing**: Essential for message event handling
 - **Priority Systems**: Active channels and new PRs get processing priority
+
+---
+
+## Infrastructure: CI/CD and Development Automation
+
+### Overview
+Professional-grade continuous integration and deployment infrastructure to support high-quality development throughout all phases.
+
+### GitHub Actions Workflows
+
+#### Issue #16: Main CI Workflow (`.github/workflows/ci.yml`)
+**Milestone**: Phase 1: Foundation & Architecture
+**Priority**: High - No blockers, ready to implement immediately
+
+**Features**:
+- **Code Quality Gates**: Format checking (`deno fmt --check`), linting (`deno lint`)
+- **Type Safety**: TypeScript compilation validation for all `.ts` files
+- **Build Verification**: Slack manifest compilation and validation
+- **Test Execution**: Graceful handling of test scenarios (including no-tests state)
+- **Performance**: Complete CI run in under 3 minutes
+- **Triggers**: Push to main branch and all pull requests
+
+**Technical Implementation**:
+```yaml
+# Automated quality assurance
+- Format check: deno fmt --check
+- Linting: deno lint
+- Type checking: deno check manifest.ts + all TypeScript files
+- Testing: deno task test (with graceful no-tests handling)
+- Build verification: Slack manifest compilation
+```
+
+**Benefits**:
+- Catches issues before they reach main branch
+- Ensures consistent code quality across all contributors
+- Provides fast feedback loop for developers
+- Establishes foundation for future deployment automation
+
+#### Issue #17: CI Status and Documentation
+**Milestone**: Phase 1: Foundation & Architecture
+**Dependencies**: Issue #16 (for working CI badge)
+
+**Deliverables**:
+- **README.md Updates**: CI status badge, development quick start, contributor guidelines
+- **Workflow Documentation**: `.github/workflows/README.md` with comprehensive CI/CD guides
+- **Contributor Guidelines**: `CONTRIBUTING.md` with code quality standards and development workflow
+
+**Content Strategy**:
+- Clear setup instructions for new developers
+- Troubleshooting guides for common CI failures
+- Code quality standards and expectations
+- Integration with existing `deno.jsonc` configuration
+
+#### Issue #18: Deployment Workflow Placeholder
+**Milestone**: Infrastructure (separate from Phases 1-5)
+**Priority**: Low - Future preparation, not blocking current development
+
+**Architecture**:
+- **Multi-Environment Support**: Dev, Staging, Production deployment paths
+- **Manual Deployment**: Workflow dispatch with environment selection
+- **Security Foundation**: Environment protection rules, secret management structure
+- **Slack CLI Integration**: Placeholder for future Slack deployment automation
+
+**Future Implementation Points**:
+- Phase 4: Actual Slack CLI integration and workspace deployment
+- Phase 5: Automated deployment triggers and rollback procedures
+- Security: Multi-workspace management and token rotation
+
+### Integration with Development Phases
+
+#### Phase 1 Benefits:
+- **Quality Assurance**: All foundational code (datastores, GitHub client, utilities) validated by CI
+- **Early Issue Detection**: Catch TypeScript errors, formatting issues, and build problems immediately
+- **Professional Standards**: Establish code quality expectations before complexity increases
+
+#### Phase 2 Benefits:
+- **Workflow Validation**: PR detection workflows, slash commands validated on every change
+- **Integration Testing**: Message event handling and GitHub API integration verified
+- **Performance Monitoring**: Track CI execution time as codebase complexity grows
+
+#### Phase 3-5 Benefits:
+- **Deployment Ready**: Infrastructure prepared for automated Slack workspace deployment
+- **Quality Gate**: All advanced features must pass CI before deployment
+- **Maintenance Support**: Automated validation supports ongoing feature development
+
+### CI/CD Success Metrics
+
+#### Technical Metrics:
+- **CI Execution Time**: ≤ 3 minutes for full workflow
+- **Success Rate**: ≥ 95% pass rate on main branch
+- **Developer Feedback Time**: ≤ 5 minutes from push to CI results
+- **False Positive Rate**: ≤ 2% (CI failures that aren't real issues)
+
+#### Developer Experience Metrics:
+- **Contributor Onboarding**: New developers can set up and contribute within 30 minutes
+- **CI Clarity**: ≥ 90% of CI failures have clear, actionable error messages
+- **Documentation Usage**: README and contributing guides actively used by team
+
+#### Quality Impact Metrics:
+- **Bug Prevention**: CI catches formatting, linting, and type issues before manual review
+- **Code Consistency**: 100% of merged code follows established formatting and style standards
+- **Deployment Confidence**: CI success strongly correlates with successful Slack deployments
+
+### Implementation Priority and Dependencies
+
+#### Immediate (Ready to Start):
+1. **Issue #16 (Main CI)**: No dependencies, works with current codebase
+2. **Issue #17 (Documentation)**: Depends on Issue #16 for working CI badge
+
+#### Future Infrastructure:
+3. **Issue #18 (Deployment)**: Independent, can be implemented anytime during Phases 1-5
+
+This infrastructure investment provides immediate value (quality assurance) while preparing for future needs (automated deployment), ensuring the project maintains high standards throughout its development lifecycle.
 
 ---
 
