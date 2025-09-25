@@ -170,12 +170,14 @@ interface EventLog {
 - [ ] **File**: `workflows/message_handler_workflow.ts`
 - [ ] **Trigger**: Message events in channels where bot is present
 - [ ] **Logic**:
-  1. Parse message for GitHub PR URLs
-  2. Skip if no URLs found
-  3. For each URL, check if already tracked
-  4. If new, fetch PR data from GitHub
-  5. Store in datastore
-  6. React to message with ✅ or thread reply
+  1. Pre-filter message (length > 10 chars, contains "github.com")
+  2. Parse message for GitHub PR URLs using regex
+  3. Skip if no URLs found
+  4. Rate limit: Max 3 GitHub API calls per minute per channel
+  5. For each URL, check if already tracked
+  6. If new, fetch PR data from GitHub (queue if rate limited)
+  7. Store in datastore
+  8. React to message with ✅ or thread reply
 
 #### 2.2 PR Detection Function
 - [ ] **Task**: Core function to detect and track new PRs
@@ -255,20 +257,21 @@ interface EventLog {
   - `workflows/refresh_workflow.ts`
   - `functions/pr_refresher.ts`
   - `triggers/refresh_trigger.ts`
-- [ ] **Trigger**: Scheduled (every 5 minutes default)
+- [ ] **Trigger**: Scheduled (hourly with internal batching)
 - [ ] **Process**:
   ```typescript
-  1. Get all open PRs across all channels
-  2. Group by repo to minimize API calls
-  3. For each PR:
+  1. Process channels in priority order (most active first)
+  2. For each channel, get open PRs for that channel only
+  3. Group by repo to minimize API calls (max 80/hour)
+  4. For each PR:
      a. Fetch latest data from GitHub
      b. Compare with stored data
      c. Update if changed
      d. Log significant changes
-  4. Handle rate limits and errors gracefully
-  5. Log 'refresh_run' event with metrics
+  5. Stop processing if approaching rate limits
+  6. Log 'refresh_run' event with metrics
   ```
-- [ ] **Rate Limiting**: Distribute calls across time, respect GitHub limits
+- [ ] **Rate Limiting**: Max 80 requests/hour (leaving 20 for real-time detection), implement queue with priority (new PRs first)
 
 #### 3.2 Rich Block Kit UI
 - [ ] **Task**: Enhance `/prs` command with interactive Block Kit interface
@@ -281,18 +284,18 @@ interface EventLog {
   - Compact view with expand option for details
 - [ ] **Layout**:
   ```
-  📋 PRs in #dev-team (5 open, 2 closed today)
+  📋 PRs in #dev-team (5 open)
 
-  🟢 Open & Ready (3)
-  ├─ ✅ Add user authentication (#123)
-     👤 @alice · ⏰ 2 days · ✅ CI passed · 👥 2 approvals
-     [Open PR] [View Reviews]
-
-  🔵 Drafts (2)
-  ├─ 🔵 WIP: Refactor database layer (#124)
-     👤 @bob · ⏰ 4 hours · ⏳ CI running
+  ✅ Fix auth bug (#123) @alice
      [Open PR]
+  🟡 Add API endpoint (#124) @bob
+     [Open PR]
+  🔵 Draft: DB refactor (#125) @charlie
+     [Open PR]
+
+  [Show More...] (2 remaining)
   ```
+  **Character Limit**: Max 15 PRs per response, pagination required for larger lists
 
 #### 3.3 End-of-Day Cleanup
 - [ ] **Task**: Automatic removal of closed PRs at day boundary
@@ -317,7 +320,7 @@ interface EventLog {
 - [ ] **Auto-initialize**: When first PR detected in channel
 - [ ] **Default Settings**:
   - Timezone: UTC
-  - Refresh interval: 5 minutes
+  - Refresh interval: Dynamic (15-60 min based on PR count)
   - Cleanup hour: 23 (11 PM)
   - Label filters: none
 
@@ -368,6 +371,8 @@ interface EventLog {
   ```
 - [ ] **Error Recovery**: Automatic retries with exponential backoff
 - [ ] **User Notifications**: Thread replies for important errors only
+- [ ] **Rate Limit Handling**: Queue PR detection when GitHub API limits reached
+- [ ] **Volume Management**: Graceful degradation during high message volume periods
 
 #### 4.2 GitHub Token Management
 - [ ] **Task**: Secure token storage and rotation
@@ -509,6 +514,35 @@ interface EventLog {
 
 ---
 
+## Technical Constraints & Performance Expectations
+
+### Slack Platform Limits
+- **Event Processing**: 30,000 events/workspace/hour maximum
+- **Datastore Queries**: 1MB scan limit, pagination required for large datasets
+- **Block Kit Responses**: 50 blocks max, ~13k characters total, 15-20 PRs practical limit
+- **Channel Monitoring**: 20 channels max per event trigger (or all channels with billing impact)
+- **Outgoing Domains**: 10 domains maximum
+
+### GitHub API Constraints
+- **Rate Limits**: 5,000 requests/hour for authenticated users
+- **Practical Limit**: 80 requests/hour (reserve 20 for real-time detection)
+- **Performance Impact**: Can refresh ~80 PRs per hour maximum
+- **Batching Required**: Group requests by repository to optimize quota usage
+
+### Realistic Performance Expectations
+- **PR Detection**: Near real-time (< 30 seconds) for normal message volumes
+- **Status Refresh**: 15-60 minute intervals based on workspace PR count
+- **UI Response Time**: < 2 seconds for up to 15 PRs, pagination beyond that
+- **Supported Scale**: Optimal for workspaces with < 100 active PRs across all channels
+
+### Architecture Implications
+- **No Cross-Channel Aggregation**: "All open PRs" queries not feasible at scale
+- **Channel-First Design**: All operations scoped to individual channels
+- **Queue-Based Processing**: Essential for message event handling
+- **Priority Systems**: Active channels and new PRs get processing priority
+
+---
+
 ## Deployment Strategy
 
 ### Environment Setup
@@ -538,10 +572,12 @@ interface EventLog {
 ## Risk Mitigation
 
 ### Technical Risks
-1. **GitHub Rate Limiting**: Implement intelligent queuing and backoff
-2. **Slack Message Limits**: Pagination and truncation for large PR lists
+1. **GitHub Rate Limiting**: Max 80 requests/hour shared across all channels - queue system required
+2. **Slack Message Limits**: 15 PRs max per Block Kit response, mandatory pagination
 3. **Token Expiration**: Automated rotation and user notifications
 4. **Data Consistency**: Transaction-like operations where possible
+5. **Message Processing Volume**: Max 30k events/hour per workspace - implement filtering
+6. **Datastore Performance**: 1MB scan limits require pagination for large PR lists
 
 ### User Experience Risks
 1. **Information Overload**: Default to essential info, expandable details
@@ -559,16 +595,18 @@ interface EventLog {
 ## Success Metrics
 
 ### Technical Metrics
-- `/prs` command p95 response time ≤ 1.5 seconds
-- Background refresh completes within 30 seconds for 100 PRs
-- Error rate < 1% for all critical operations
-- 99.9% uptime excluding external dependency failures
+- `/prs` command p95 response time ≤ 2 seconds (up to 15 PRs)
+- Background refresh processes 80 PRs/hour maximum
+- PR detection latency < 30 seconds during normal message volume
+- Error rate < 2% for GitHub API operations (accounting for rate limits)
+- Block Kit UI renders correctly with pagination for >15 PRs
 
 ### User Experience Metrics
-- Time from PR posting to tracking ≤ 10 seconds
-- User adoption: ≥70% of invited channels actively use the bot
-- Command usage: ≥5 `/prs` commands per active channel per day
-- User satisfaction: ≥4.5/5 based on feedback
+- Time from PR posting to tracking ≤ 30 seconds (normal conditions)
+- User adoption: ≥50% of invited channels actively use the bot
+- Command usage: ≥3 `/prs` commands per active channel per day
+- User satisfaction: ≥4.2/5 based on feedback (accounting for rate limit delays)
+- Successful PR refresh rate: ≥90% within configured intervals
 
 ### Business Metrics
 - Reduce average time-to-first-review by 20%
