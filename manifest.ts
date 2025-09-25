@@ -1,5 +1,4 @@
 import { Manifest } from "deno-slack-sdk/mod.ts";
-import SampleWorkflow from "./workflows/sample_workflow.ts";
 import SampleObjectDatastore from "./datastores/sample_datastore.ts";
 
 /**
@@ -9,9 +8,10 @@ import SampleObjectDatastore from "./datastores/sample_datastore.ts";
  */
 export default Manifest({
   name: "patty_pr_minder",
-  description: "A template for building Slack apps with Deno",
+  description:
+    "Slack bot that tracks GitHub PR status and provides team visibility",
   icon: "assets/default_new_app_icon.png",
-  workflows: [SampleWorkflow],
+  workflows: [], // Will add PR tracking workflows in Phase 2
   outgoingDomains: [],
   datastores: [SampleObjectDatastore],
   botScopes: [
