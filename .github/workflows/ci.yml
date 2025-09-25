@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allow manual workflow runs
+
+env:
+  DENO_VERSION: "1.x"
+
+jobs:
+  test:
+    name: Code Quality & Testing
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
+      with:
+        deno-version: ${{ env.DENO_VERSION }}
+
+    - name: Check formatting
+      run: deno fmt --check
+
+    - name: Run linter
+      run: deno lint
+
+    - name: Type check manifest
+      run: deno check manifest.ts
+
+    - name: Type check project files
+      run: |
+        # Check all TypeScript files for type errors
+        find . -name "*.ts" -not -path "./node_modules/*" -not -path "./.git/*" | xargs -r deno check
+
+    - name: Run tests
+      run: |
+        if deno task test; then
+          echo "✅ Tests passed"
+        elif [ $? -eq 1 ] && [[ $(deno test 2>&1) == *"No test modules found"* ]]; then
+          echo "ℹ️  No tests found - this is expected during early development"
+          exit 0
+        else
+          echo "❌ Tests failed"
+          exit 1
+        fi
+
+    - name: Verify Slack manifest compiles
+      run: |
+        # Additional verification that manifest is valid
+        deno eval "
+        import manifest from './manifest.ts';
+        console.log('✅ Manifest loaded successfully - type:', typeof manifest);
+        console.log('📋 Manifest structure keys:', Object.keys(manifest).length, 'properties');
+        if (manifest.outgoing_domains) {
+          console.log('🌐 Outgoing domains configured:', manifest.outgoing_domains.length);
+        }
+        if (manifest.datastores) {
+          console.log('💾 Datastores configured:', manifest.datastores.length);
+        }
+        console.log('🔧 Successfully verified manifest compilation');
+        "
