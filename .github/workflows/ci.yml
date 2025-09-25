@@ -23,6 +23,14 @@ jobs:
       uses: denoland/setup-deno@v1
       with:
         deno-version: ${{ env.DENO_VERSION }}
+    
+    - name: Setup Biome
+      uses: biomejs/setup-biome@v2
+      with:
+        version: latest
+    
+    - name: Run Biome
+      run: biome ci .
 
     - name: Check formatting
       run: deno fmt --check
