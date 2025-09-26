@@ -5,8 +5,11 @@
     "https://deno.land": false
   },
   "[typescript]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "denoland.vscode-deno"
+    "editor.formatOnSave": true
   },
-  "editor.tabSize": 2
+  "editor.defaultFormatter": "biomejs.biome",
+  "editor.tabSize": 2,
+  "[yaml]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  }
 }

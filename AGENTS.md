@@ -20,6 +20,7 @@
   - `deno fmt --check`, `deno lint`, `deno check manifest.ts` when you need targeted checks.
   - `slack run` to exercise the bot locally; stop with `CTRL+C`.
   - `slack deploy` to release to Slack infrastructure once deployment work is approved.
+- When a user asks “can you propose…”, supply options or recommendations only—do not implement changes unless explicit approval follows.
 
 ## Coding Style & Conventions
 - Adhere to Deno fmt (2-space indentation, double quotes) and Biome defaults; avoid manual formatting exceptions.
