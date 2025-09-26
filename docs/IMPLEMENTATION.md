@@ -1,9 +1,14 @@
 # Patty PR Minder - Implementation Plan
 
 ## Overview
-This document breaks down the implementation of Patty PR Minder from the current Slack starter template into a fully-featured PR tracking bot. The plan is organized into 5 phases, each building upon the previous one, plus supporting infrastructure tasks.
+
+This document breaks down the implementation of Patty PR Minder from the current
+Slack starter template into a fully-featured PR tracking bot. The plan is
+organized into 5 phases, each building upon the previous one, plus supporting
+infrastructure tasks.
 
 ### Milestones
+
 - **Phase 1: Foundation & Architecture** (Weeks 1-2) - Issues #1-6, #16-17
 - **Phase 2: Core PR Detection & Tracking** (Weeks 3-4) - Issues #7-11
 - **Phase 3: Advanced Features** (Weeks 5-6) - Future Issues
@@ -16,16 +21,20 @@ This document breaks down the implementation of Patty PR Minder from the current
 ## Architecture Overview
 
 ### Current State → Target State
-**FROM:** Generic message-posting workflow with sample components
-**TO:** Event-driven PR tracking system with GitHub integration
+
+**FROM:** Generic message-posting workflow with sample components **TO:**
+Event-driven PR tracking system with GitHub integration
 
 ### Core Components Transformation
-- **Workflow**: Sample workflow → PR tracking workflows (detection, refresh, cleanup)
+
+- **Workflow**: Sample workflow → PR tracking workflows (detection, refresh,
+  cleanup)
 - **Functions**: Sample function → GitHub API client, PR parser, status updater
 - **Triggers**: Sample trigger → Message event trigger + scheduled triggers
 - **Datastore**: Sample objects → Channel settings + PR tracking + Event logs
 
 ### Key Integrations
+
 1. **GitHub API**: REST/GraphQL for PR metadata and status
 2. **Slack Events API**: Message parsing for PR URL detection
 3. **Slack Slash Commands**: `/prs` with rich Block Kit UI
@@ -36,46 +45,55 @@ This document breaks down the implementation of Patty PR Minder from the current
 ## Data Models
 
 ### Channel Settings
+
 ```typescript
 interface ChannelSettings {
-  channel_id: string;           // Primary key
-  timezone: string;             // For end-of-day cleanup
+  channel_id: string; // Primary key
+  timezone: string; // For end-of-day cleanup
   refresh_interval_minutes: number; // Default: 5
-  cleanup_hour: number;         // Default: 23 (11 PM)
-  label_filters: string[];      // Optional PR label filtering
+  cleanup_hour: number; // Default: 23 (11 PM)
+  label_filters: string[]; // Optional PR label filtering
   created_at: string;
   updated_at: string;
 }
 ```
 
 ### PR Tracking
+
 ```typescript
 interface TrackedPR {
-  id: string;                   // Primary key: `${channel_id}-${repo}-${number}`
+  id: string; // Primary key: `${channel_id}-${repo}-${number}`
   channel_id: string;
-  repo_full_name: string;       // "owner/repo"
+  repo_full_name: string; // "owner/repo"
   pr_number: number;
   title: string;
   author: string;
   html_url: string;
-  state: 'open' | 'closed' | 'merged';
+  state: "open" | "closed" | "merged";
   draft: boolean;
-  review_state: 'pending' | 'changes_requested' | 'approved' | 'mixed';
-  ci_state: 'pending' | 'success' | 'failure' | 'error' | null;
+  review_state: "pending" | "changes_requested" | "approved" | "mixed";
+  ci_state: "pending" | "success" | "failure" | "error" | null;
   labels: string[];
-  first_seen_at: string;        // When first posted in Slack
-  last_seen_at: string;         // Last time URL was posted
-  last_refreshed_at: string;    // Last GitHub API refresh
+  first_seen_at: string; // When first posted in Slack
+  last_seen_at: string; // Last time URL was posted
+  last_refreshed_at: string; // Last GitHub API refresh
   created_at: string;
   updated_at: string;
 }
 ```
 
 ### Event Log
+
 ```typescript
 interface EventLog {
-  id: string;                   // Primary key
-  event_type: 'pr_tracked' | 'refresh_run' | 'slash_prs_run' | 'pr_closed_seen' | 'error_auth' | 'rate_limit_hit';
+  id: string; // Primary key
+  event_type:
+    | "pr_tracked"
+    | "refresh_run"
+    | "slash_prs_run"
+    | "pr_closed_seen"
+    | "error_auth"
+    | "rate_limit_hit";
   channel_id?: string;
   properties: Record<string, any>; // Event-specific data
   timestamp: string;
@@ -87,6 +105,7 @@ interface EventLog {
 ## Phase 1: Foundation & Architecture (Week 1-2)
 
 ### Goals
+
 - Replace sample code infrastructure
 - Establish GitHub API integration
 - Set up new data models
@@ -95,11 +114,14 @@ interface EventLog {
 ### Tasks
 
 #### 1.1 Replace Sample Infrastructure
+
 - [ ] **Task**: Remove sample workflow, function, trigger
-- [ ] **Files**: Delete/replace `workflows/sample_workflow.ts`, `functions/sample_function.ts`, `triggers/sample_trigger.ts`
+- [ ] **Files**: Delete/replace `workflows/sample_workflow.ts`,
+      `functions/sample_function.ts`, `triggers/sample_trigger.ts`
 - [ ] **Acceptance**: Clean slate for PR tracking components
 
 #### 1.2 Update Manifest & Permissions
+
 - [ ] **Task**: Add required Slack permissions and GitHub outgoing domains
 - [ ] **File**: `manifest.ts`
 - [ ] **Changes**:
@@ -119,6 +141,7 @@ interface EventLog {
   ```
 
 #### 1.3 Create New Datastores
+
 - [ ] **Task**: Replace sample datastore with PR tracking schema
 - [ ] **Files**:
   - `datastores/channel_settings.ts`
@@ -127,6 +150,7 @@ interface EventLog {
 - [ ] **Acceptance**: Datastore definitions match schema above
 
 #### 1.4 GitHub API Client Foundation
+
 - [ ] **Task**: Create GitHub API client with authentication and rate limiting
 - [ ] **File**: `functions/github_client.ts`
 - [ ] **Features**:
@@ -134,9 +158,12 @@ interface EventLog {
   - Rate limit handling with retry logic
   - Error handling for common scenarios (401, 403, 404, 429)
   - Basic PR fetching functionality
+  - Local development reads `GITHUB_TOKEN` from `.env` (see `sample.env`), and
+    integration tests stay opt-in via `TEST_GH_API=1`
 - [ ] **Acceptance**: Can fetch PR data from public repos
 
 #### 1.5 Utility Functions
+
 - [ ] **Task**: Create PR URL parsing and validation utilities
 - [ ] **File**: `functions/pr_utils.ts`
 - [ ] **Functions**:
@@ -147,6 +174,7 @@ interface EventLog {
   ```
 
 #### 1.6 Basic Error Handling
+
 - [ ] **Task**: Create error handling utilities and logging
 - [ ] **File**: `functions/error_handler.ts`
 - [ ] **Features**:
@@ -155,6 +183,7 @@ interface EventLog {
   - Rate limit backoff calculations
 
 ### Acceptance Criteria
+
 - [ ] Sample code completely removed
 - [ ] New datastores defined and deployable
 - [ ] GitHub API client can fetch basic PR data
@@ -166,6 +195,7 @@ interface EventLog {
 ## Phase 2: Core PR Detection & Tracking (Week 3-4)
 
 ### Goals
+
 - Implement message event handling
 - Build PR detection and initial tracking
 - Create basic `/prs` slash command
@@ -174,6 +204,7 @@ interface EventLog {
 ### Tasks
 
 #### 2.1 Message Event Handler
+
 - [ ] **Task**: Create workflow to handle channel messages
 - [ ] **File**: `workflows/message_handler_workflow.ts`
 - [ ] **Trigger**: Message events in channels where bot is present
@@ -188,6 +219,7 @@ interface EventLog {
   8. React to message with ✅ or thread reply
 
 #### 2.2 PR Detection Function
+
 - [ ] **Task**: Core function to detect and track new PRs
 - [ ] **File**: `functions/pr_tracker.ts`
 - [ ] **Input**: Channel ID, message text, user ID, timestamp
@@ -208,6 +240,7 @@ interface EventLog {
   - Rate limits → queue for later retry
 
 #### 2.3 Basic Slash Command
+
 - [ ] **Task**: Implement `/prs` command with simple text output
 - [ ] **Files**:
   - `workflows/prs_command_workflow.ts`
@@ -228,18 +261,21 @@ interface EventLog {
   ```
 
 #### 2.4 PR Deduplication
+
 - [ ] **Task**: Ensure same PR URL doesn't create duplicates
 - [ ] **Logic**: Use composite key `${channel_id}-${owner}-${repo}-${number}`
 - [ ] **Update**: When duplicate detected, update `last_seen_at` timestamp
 - [ ] **Acceptance**: Posting same PR multiple times updates existing record
 
 #### 2.5 Message Event Trigger
+
 - [ ] **Task**: Create trigger for message events
 - [ ] **File**: `triggers/message_event_trigger.ts`
 - [ ] **Type**: Event trigger on `message.channels`
 - [ ] **Filters**: Only channels where bot is member
 
 ### Acceptance Criteria
+
 - [ ] Bot detects GitHub PR URLs in messages automatically
 - [ ] PR metadata is fetched and stored correctly
 - [ ] `/prs` command shows tracked PRs for current channel only
@@ -252,6 +288,7 @@ interface EventLog {
 ## Phase 3: Advanced Features (Week 5-6)
 
 ### Goals
+
 - Implement periodic PR status refresh
 - Build rich Block Kit UI for `/prs` command
 - Add end-of-day cleanup system
@@ -260,6 +297,7 @@ interface EventLog {
 ### Tasks
 
 #### 3.1 Periodic Refresh System
+
 - [ ] **Task**: Background job to refresh PR status from GitHub
 - [ ] **Files**:
   - `workflows/refresh_workflow.ts`
@@ -279,14 +317,17 @@ interface EventLog {
   5. Stop processing if approaching rate limits
   6. Log 'refresh_run' event with metrics
   ```
-- [ ] **Rate Limiting**: Max 80 requests/hour (leaving 20 for real-time detection), implement queue with priority (new PRs first)
+- [ ] **Rate Limiting**: Max 80 requests/hour (leaving 20 for real-time
+      detection), implement queue with priority (new PRs first)
 
 #### 3.2 Rich Block Kit UI
+
 - [ ] **Task**: Enhance `/prs` command with interactive Block Kit interface
 - [ ] **File**: `functions/prs_ui_builder.ts`
 - [ ] **Features**:
   - Grouped sections: Open, Drafts, Recently Closed Today
-  - Status indicators with emoji (🔵 Draft, 🟡 Ready, ✅ Approved, ❌ Changes Requested)
+  - Status indicators with emoji (🔵 Draft, 🟡 Ready, ✅ Approved, ❌ Changes
+    Requested)
   - "Open PR" button for each item linking to GitHub
   - Metadata: Author, age, CI status, review count
   - Compact view with expand option for details
@@ -303,9 +344,11 @@ interface EventLog {
 
   [Show More...] (2 remaining)
   ```
-  **Character Limit**: Max 15 PRs per response, pagination required for larger lists
+  **Character Limit**: Max 15 PRs per response, pagination required for larger
+  lists
 
 #### 3.3 End-of-Day Cleanup
+
 - [ ] **Task**: Automatic removal of closed PRs at day boundary
 - [ ] **Files**:
   - `workflows/cleanup_workflow.ts`
@@ -323,6 +366,7 @@ interface EventLog {
   ```
 
 #### 3.4 Channel Settings Management
+
 - [ ] **Task**: Initialize and manage per-channel settings
 - [ ] **File**: `functions/channel_settings.ts`
 - [ ] **Auto-initialize**: When first PR detected in channel
@@ -333,6 +377,7 @@ interface EventLog {
   - Label filters: none
 
 #### 3.5 Performance Optimizations
+
 - [ ] **Task**: Add caching and query optimizations
 - [ ] **Optimizations**:
   - Cache GitHub API responses for 1-2 minutes
@@ -341,6 +386,7 @@ interface EventLog {
   - Implement pagination for large channel PR lists
 
 ### Acceptance Criteria
+
 - [ ] PR status updates automatically every 5 minutes
 - [ ] `/prs` shows rich, interactive Block Kit interface
 - [ ] "Open PR" buttons link correctly to GitHub
@@ -353,6 +399,7 @@ interface EventLog {
 ## Phase 4: Production Readiness (Week 7-8)
 
 ### Goals
+
 - Comprehensive error handling and user experience
 - Secure GitHub token management
 - Performance monitoring and optimization
@@ -361,28 +408,31 @@ interface EventLog {
 ### Tasks
 
 #### 4.1 Enhanced Error Handling
+
 - [ ] **Task**: Comprehensive error handling with user-friendly messages
 - [ ] **File**: `functions/error_messages.ts`
 - [ ] **Scenarios**:
   ```typescript
   // GitHub authentication errors
-  "🔒 Can't access private repo. Please check GitHub permissions."
+  "🔒 Can't access private repo. Please check GitHub permissions.";
 
   // Rate limiting
-  "⏳ GitHub API rate limit reached. Trying again in 15 minutes."
+  "⏳ GitHub API rate limit reached. Trying again in 15 minutes.";
 
   // Network errors
-  "🌐 GitHub is temporarily unavailable. Retrying automatically."
+  "🌐 GitHub is temporarily unavailable. Retrying automatically.";
 
   // Invalid PR URLs
-  "❌ Invalid GitHub PR URL format"
+  "❌ Invalid GitHub PR URL format";
   ```
 - [ ] **Error Recovery**: Automatic retries with exponential backoff
 - [ ] **User Notifications**: Thread replies for important errors only
 - [ ] **Rate Limit Handling**: Queue PR detection when GitHub API limits reached
-- [ ] **Volume Management**: Graceful degradation during high message volume periods
+- [ ] **Volume Management**: Graceful degradation during high message volume
+      periods
 
 #### 4.2 GitHub Token Management
+
 - [ ] **Task**: Secure token storage and rotation
 - [ ] **Implementation**:
   - Support for both GitHub App and PAT authentication
@@ -396,6 +446,7 @@ interface EventLog {
   ```
 
 #### 4.3 Performance Monitoring
+
 - [ ] **Task**: Add telemetry and performance tracking
 - [ ] **Metrics**:
   - `/prs` command response time (p95, p99)
@@ -405,6 +456,7 @@ interface EventLog {
 - [ ] **Alerting**: Log warnings when approaching performance thresholds
 
 #### 4.4 Setup and Configuration
+
 - [ ] **Task**: Channel onboarding and settings management
 - [ ] **Commands**:
   - `/prs-setup` - Initial GitHub authentication and settings
@@ -412,12 +464,14 @@ interface EventLog {
 - [ ] **Auto-setup**: Detect when bot added to new channel
 
 #### 4.5 Data Migration and Validation
+
 - [ ] **Task**: Safe deployment and data consistency
 - [ ] **Migration**: Scripts to handle datastore schema changes
 - [ ] **Validation**: Data integrity checks and cleanup tools
 - [ ] **Backup**: Export/import functionality for PR data
 
 #### 4.6 Testing Infrastructure
+
 - [ ] **Task**: Comprehensive test coverage
 - [ ] **Tests**:
   - Unit tests for all functions (PR parsing, GitHub client, etc.)
@@ -427,6 +481,7 @@ interface EventLog {
 - [ ] **Files**: Update all `*_test.ts` files with real test cases
 
 ### Acceptance Criteria
+
 - [ ] All error scenarios provide helpful user guidance
 - [ ] GitHub tokens are stored securely and rotated properly
 - [ ] Performance metrics are tracked and within SLA (1.5s p95)
@@ -439,6 +494,7 @@ interface EventLog {
 ## Phase 5: Enhancement & Polish (Week 9-10)
 
 ### Goals
+
 - Advanced filtering and customization
 - Per-channel configuration options
 - Analytics and monitoring
@@ -447,6 +503,7 @@ interface EventLog {
 ### Tasks
 
 #### 5.1 Advanced Filtering
+
 - [ ] **Task**: Add filtering options to `/prs` command
 - [ ] **File**: `functions/pr_filters.ts`
 - [ ] **Filters**:
@@ -458,36 +515,51 @@ interface EventLog {
 - [ ] **UI**: Dropdown selectors in Block Kit interface
 
 #### 5.2 Channel Configuration
+
 - [ ] **Task**: Granular per-channel settings
 - [ ] **Settings**:
   ```typescript
   interface ChannelConfig {
     refresh_interval: 2 | 5 | 10 | 15; // minutes
-    cleanup_hour: number;              // 0-23
-    timezone: string;                  // IANA timezone
+    cleanup_hour: number; // 0-23
+    timezone: string; // IANA timezone
     show_drafts: boolean;
     show_ci_status: boolean;
-    label_filters: string[];           // Only track PRs with these labels
-    repo_filters: string[];            // Only track these repos
-    auto_react: boolean;               // React to messages with PR URLs
+    label_filters: string[]; // Only track PRs with these labels
+    repo_filters: string[]; // Only track these repos
+    auto_react: boolean; // React to messages with PR URLs
   }
   ```
 - [ ] **Command**: `/prs-config` with interactive modal
 
 #### 5.3 Analytics and Telemetry
+
 - [ ] **Task**: Comprehensive event tracking and reporting
 - [ ] **Events**:
   ```typescript
-  pr_tracked: { channel_id, repo, pr_number, author }
-  refresh_run: { duration_ms, pr_count, errors, github_quota_remaining }
-  slash_prs_run: { channel_id, pr_count_shown, filters_used, response_time_ms }
-  pr_closed_seen: { pr_age_hours, time_to_first_review_hours }
-  error_auth: { scope, error_type }
-  rate_limit_hit: { service: 'github' | 'slack', wait_time_sec }
+  pr_tracked: {
+    channel_id, repo, pr_number, author;
+  }
+  refresh_run: {
+    duration_ms, pr_count, errors, github_quota_remaining;
+  }
+  slash_prs_run: {
+    channel_id, pr_count_shown, filters_used, response_time_ms;
+  }
+  pr_closed_seen: {
+    pr_age_hours, time_to_first_review_hours;
+  }
+  error_auth: {
+    scope, error_type;
+  }
+  rate_limit_hit: {
+    service: "github" | "slack", wait_time_sec;
+  }
   ```
 - [ ] **Dashboard**: Simple analytics view in `/prs-stats` command
 
 #### 5.4 Advanced UI Features
+
 - [ ] **Task**: Polish and enhance user interface
 - [ ] **Features**:
   - Expandable PR details (description preview, assignees, etc.)
@@ -497,6 +569,7 @@ interface EventLog {
   - Thread summaries for PR discussions
 
 #### 5.5 Performance Optimization
+
 - [ ] **Task**: Final performance tuning
 - [ ] **Optimizations**:
   - Intelligent caching with TTL
@@ -506,6 +579,7 @@ interface EventLog {
   - Response compression and caching
 
 #### 5.6 Documentation and Help
+
 - [ ] **Task**: User documentation and help system
 - [ ] **Commands**:
   - `/prs-help` - Interactive help and onboarding
@@ -513,6 +587,7 @@ interface EventLog {
 - [ ] **Documentation**: Update README with setup and usage instructions
 
 ### Acceptance Criteria
+
 - [ ] Filtering works correctly and improves UX
 - [ ] Channel configuration is flexible and easy to use
 - [ ] Analytics provide useful insights into usage patterns
@@ -525,25 +600,32 @@ interface EventLog {
 ## Technical Constraints & Performance Expectations
 
 ### Slack Platform Limits
+
 - **Event Processing**: 30,000 events/workspace/hour maximum
 - **Datastore Queries**: 1MB scan limit, pagination required for large datasets
-- **Block Kit Responses**: 50 blocks max, ~13k characters total, 15-20 PRs practical limit
-- **Channel Monitoring**: 20 channels max per event trigger (or all channels with billing impact)
+- **Block Kit Responses**: 50 blocks max, ~13k characters total, 15-20 PRs
+  practical limit
+- **Channel Monitoring**: 20 channels max per event trigger (or all channels
+  with billing impact)
 - **Outgoing Domains**: 10 domains maximum
 
 ### GitHub API Constraints
+
 - **Rate Limits**: 5,000 requests/hour for authenticated users
 - **Practical Limit**: 80 requests/hour (reserve 20 for real-time detection)
 - **Performance Impact**: Can refresh ~80 PRs per hour maximum
 - **Batching Required**: Group requests by repository to optimize quota usage
 
 ### Realistic Performance Expectations
+
 - **PR Detection**: Near real-time (< 30 seconds) for normal message volumes
 - **Status Refresh**: 15-60 minute intervals based on workspace PR count
 - **UI Response Time**: < 2 seconds for up to 15 PRs, pagination beyond that
-- **Supported Scale**: Optimal for workspaces with < 100 active PRs across all channels
+- **Supported Scale**: Optimal for workspaces with < 100 active PRs across all
+  channels
 
 ### Architecture Implications
+
 - **No Cross-Channel Aggregation**: "All open PRs" queries not feasible at scale
 - **Channel-First Design**: All operations scoped to individual channels
 - **Queue-Based Processing**: Essential for message event handling
@@ -554,23 +636,30 @@ interface EventLog {
 ## Infrastructure: CI/CD and Development Automation
 
 ### Overview
-Professional-grade continuous integration and deployment infrastructure to support high-quality development throughout all phases.
+
+Professional-grade continuous integration and deployment infrastructure to
+support high-quality development throughout all phases.
 
 ### GitHub Actions Workflows
 
 #### Issue #16: Main CI Workflow (`.github/workflows/ci.yml`)
-**Milestone**: Phase 1: Foundation & Architecture
-**Priority**: High - No blockers, ready to implement immediately
+
+**Milestone**: Phase 1: Foundation & Architecture **Priority**: High - No
+blockers, ready to implement immediately
 
 **Features**:
-- **Code Quality Gates**: Format checking (`deno fmt --check`), linting (`deno lint`)
+
+- **Code Quality Gates**: Format checking (`deno fmt --check`), linting
+  (`deno lint`)
 - **Type Safety**: TypeScript compilation validation for all `.ts` files
 - **Build Verification**: Slack manifest compilation and validation
-- **Test Execution**: Graceful handling of test scenarios (including no-tests state)
+- **Test Execution**: Graceful handling of test scenarios (including no-tests
+  state)
 - **Performance**: Complete CI run in under 3 minutes
 - **Triggers**: Push to main branch and all pull requests
 
 **Technical Implementation**:
+
 ```yaml
 # Automated quality assurance
 - Format check: deno fmt --check
@@ -581,37 +670,48 @@ Professional-grade continuous integration and deployment infrastructure to suppo
 ```
 
 **Benefits**:
+
 - Catches issues before they reach main branch
 - Ensures consistent code quality across all contributors
 - Provides fast feedback loop for developers
 - Establishes foundation for future deployment automation
 
 #### Issue #17: CI Status and Documentation
-**Milestone**: Phase 1: Foundation & Architecture
-**Dependencies**: Issue #16 (for working CI badge)
+
+**Milestone**: Phase 1: Foundation & Architecture **Dependencies**: Issue #16
+(for working CI badge)
 
 **Deliverables**:
-- **README.md Updates**: CI status badge, development quick start, contributor guidelines
-- **Workflow Documentation**: `.github/workflows/README.md` with comprehensive CI/CD guides
-- **Contributor Guidelines**: `CONTRIBUTING.md` with code quality standards and development workflow
+
+- **README.md Updates**: CI status badge, development quick start, contributor
+  guidelines
+- **Workflow Documentation**: `.github/workflows/README.md` with comprehensive
+  CI/CD guides
+- **Contributor Guidelines**: `CONTRIBUTING.md` with code quality standards and
+  development workflow
 
 **Content Strategy**:
+
 - Clear setup instructions for new developers
 - Troubleshooting guides for common CI failures
 - Code quality standards and expectations
 - Integration with existing `deno.jsonc` configuration
 
 #### Issue #18: Deployment Workflow Placeholder
-**Milestone**: Infrastructure (separate from Phases 1-5)
-**Priority**: Low - Future preparation, not blocking current development
+
+**Milestone**: Infrastructure (separate from Phases 1-5) **Priority**: Low -
+Future preparation, not blocking current development
 
 **Architecture**:
+
 - **Multi-Environment Support**: Dev, Staging, Production deployment paths
 - **Manual Deployment**: Workflow dispatch with environment selection
-- **Security Foundation**: Environment protection rules, secret management structure
+- **Security Foundation**: Environment protection rules, secret management
+  structure
 - **Slack CLI Integration**: Placeholder for future Slack deployment automation
 
 **Future Implementation Points**:
+
 - Phase 4: Actual Slack CLI integration and workspace deployment
 - Phase 5: Automated deployment triggers and rollback procedures
 - Security: Multi-workspace management and token rotation
@@ -619,70 +719,97 @@ Professional-grade continuous integration and deployment infrastructure to suppo
 ### Integration with Development Phases
 
 #### Phase 1 Benefits:
-- **Quality Assurance**: All foundational code (datastores, GitHub client, utilities) validated by CI
-- **Early Issue Detection**: Catch TypeScript errors, formatting issues, and build problems immediately
-- **Professional Standards**: Establish code quality expectations before complexity increases
+
+- **Quality Assurance**: All foundational code (datastores, GitHub client,
+  utilities) validated by CI
+- **Early Issue Detection**: Catch TypeScript errors, formatting issues, and
+  build problems immediately
+- **Professional Standards**: Establish code quality expectations before
+  complexity increases
 
 #### Phase 2 Benefits:
-- **Workflow Validation**: PR detection workflows, slash commands validated on every change
-- **Integration Testing**: Message event handling and GitHub API integration verified
-- **Performance Monitoring**: Track CI execution time as codebase complexity grows
+
+- **Workflow Validation**: PR detection workflows, slash commands validated on
+  every change
+- **Integration Testing**: Message event handling and GitHub API integration
+  verified
+- **Performance Monitoring**: Track CI execution time as codebase complexity
+  grows
 
 #### Phase 3-5 Benefits:
-- **Deployment Ready**: Infrastructure prepared for automated Slack workspace deployment
+
+- **Deployment Ready**: Infrastructure prepared for automated Slack workspace
+  deployment
 - **Quality Gate**: All advanced features must pass CI before deployment
-- **Maintenance Support**: Automated validation supports ongoing feature development
+- **Maintenance Support**: Automated validation supports ongoing feature
+  development
 
 ### CI/CD Success Metrics
 
 #### Technical Metrics:
+
 - **CI Execution Time**: ≤ 3 minutes for full workflow
 - **Success Rate**: ≥ 95% pass rate on main branch
 - **Developer Feedback Time**: ≤ 5 minutes from push to CI results
 - **False Positive Rate**: ≤ 2% (CI failures that aren't real issues)
 
 #### Developer Experience Metrics:
-- **Contributor Onboarding**: New developers can set up and contribute within 30 minutes
+
+- **Contributor Onboarding**: New developers can set up and contribute within 30
+  minutes
 - **CI Clarity**: ≥ 90% of CI failures have clear, actionable error messages
 - **Documentation Usage**: README and contributing guides actively used by team
 
 #### Quality Impact Metrics:
-- **Bug Prevention**: CI catches formatting, linting, and type issues before manual review
-- **Code Consistency**: 100% of merged code follows established formatting and style standards
-- **Deployment Confidence**: CI success strongly correlates with successful Slack deployments
+
+- **Bug Prevention**: CI catches formatting, linting, and type issues before
+  manual review
+- **Code Consistency**: 100% of merged code follows established formatting and
+  style standards
+- **Deployment Confidence**: CI success strongly correlates with successful
+  Slack deployments
 
 ### Implementation Priority and Dependencies
 
 #### Immediate (Ready to Start):
+
 1. **Issue #16 (Main CI)**: No dependencies, works with current codebase
 2. **Issue #17 (Documentation)**: Depends on Issue #16 for working CI badge
 
 #### Future Infrastructure:
-3. **Issue #18 (Deployment)**: Independent, can be implemented anytime during Phases 1-5
 
-This infrastructure investment provides immediate value (quality assurance) while preparing for future needs (automated deployment), ensuring the project maintains high standards throughout its development lifecycle.
+3. **Issue #18 (Deployment)**: Independent, can be implemented anytime during
+   Phases 1-5
+
+This infrastructure investment provides immediate value (quality assurance)
+while preparing for future needs (automated deployment), ensuring the project
+maintains high standards throughout its development lifecycle.
 
 ---
 
 ## Deployment Strategy
 
 ### Environment Setup
+
 1. **Development**: Local Slack workspace with test channels
 2. **Staging**: Limited rollout to internal team channels
 3. **Production**: Gradual rollout with feature flags
 
 ### Feature Flags
+
 - `auto_pr_detection`: Enable/disable automatic PR URL detection
 - `background_refresh`: Enable/disable periodic status updates
 - `rich_ui`: Toggle between simple and rich Block Kit interface
 - `analytics`: Enable/disable telemetry collection
 
 ### Rollback Plan
+
 - Configuration flags to disable features
 - Data export/import for migration scenarios
 - Graceful degradation when GitHub API unavailable
 
 ### Monitoring and Alerting
+
 - GitHub API rate limit usage (alert at 80%)
 - `/prs` command response time (alert if p95 > 2.5s)
 - Background refresh failure rate (alert if >5% over 15 min)
@@ -693,19 +820,26 @@ This infrastructure investment provides immediate value (quality assurance) whil
 ## Risk Mitigation
 
 ### Technical Risks
-1. **GitHub Rate Limiting**: Max 80 requests/hour shared across all channels - queue system required
-2. **Slack Message Limits**: 15 PRs max per Block Kit response, mandatory pagination
+
+1. **GitHub Rate Limiting**: Max 80 requests/hour shared across all channels -
+   queue system required
+2. **Slack Message Limits**: 15 PRs max per Block Kit response, mandatory
+   pagination
 3. **Token Expiration**: Automated rotation and user notifications
 4. **Data Consistency**: Transaction-like operations where possible
-5. **Message Processing Volume**: Max 30k events/hour per workspace - implement filtering
-6. **Datastore Performance**: 1MB scan limits require pagination for large PR lists
+5. **Message Processing Volume**: Max 30k events/hour per workspace - implement
+   filtering
+6. **Datastore Performance**: 1MB scan limits require pagination for large PR
+   lists
 
 ### User Experience Risks
+
 1. **Information Overload**: Default to essential info, expandable details
 2. **Channel Spam**: Ephemeral responses and minimal notifications
 3. **Setup Complexity**: Guided onboarding with sensible defaults
 
 ### Security Considerations
+
 1. **Token Storage**: Encryption at rest, principle of least privilege
 2. **Data Isolation**: Strict per-channel data separation
 3. **Input Validation**: Sanitize all user inputs and URLs
@@ -716,6 +850,7 @@ This infrastructure investment provides immediate value (quality assurance) whil
 ## Success Metrics
 
 ### Technical Metrics
+
 - `/prs` command p95 response time ≤ 2 seconds (up to 15 PRs)
 - Background refresh processes 80 PRs/hour maximum
 - PR detection latency < 30 seconds during normal message volume
@@ -723,6 +858,7 @@ This infrastructure investment provides immediate value (quality assurance) whil
 - Block Kit UI renders correctly with pagination for >15 PRs
 
 ### User Experience Metrics
+
 - Time from PR posting to tracking ≤ 30 seconds (normal conditions)
 - User adoption: ≥50% of invited channels actively use the bot
 - Command usage: ≥3 `/prs` commands per active channel per day
@@ -730,8 +866,11 @@ This infrastructure investment provides immediate value (quality assurance) whil
 - Successful PR refresh rate: ≥90% within configured intervals
 
 ### Business Metrics
+
 - Reduce average time-to-first-review by 20%
 - Increase percentage of PRs with assigned reviewers within 2 hours
 - Reduce "lost" PRs (PRs that receive no attention for >48 hours)
 
-This implementation plan provides a comprehensive roadmap for transforming the starter template into a fully-featured PR tracking bot that meets all requirements while maintaining high quality and user experience standards.
+This implementation plan provides a comprehensive roadmap for transforming the
+starter template into a fully-featured PR tracking bot that meets all
+requirements while maintaining high quality and user experience standards.

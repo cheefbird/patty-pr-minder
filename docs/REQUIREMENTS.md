@@ -1,4 +1,4 @@
-# Slack PR Tracker Bot — PRD v0.1 (Owner: <DRI>)
+# Slack PR Tracker Bot  -  PRD v0.1 (Owner: <DRI>)
 
 ## 1) Problem & Context
 - Pain: PR review links fly by in channel chatter. Teams lack a consolidated, always-current view of open PRs that need attention. Manual status checks and triage waste time.

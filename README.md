@@ -21,11 +21,27 @@ Slack bot that tracks GitHub PR status and provides team visibility.
 ### Quick Start
 
 ```bash
+# Clone the repo, cd into it
+gh repo clone cheefbird/patty-pr-minder && cd patty-pr-minder
+
+# Configure GitHub access token (one-time)
+cp sample.env .env
+
+# Open .env and add your GITHUB_TOKEN. Save it.
+# Optional: enable live GitHub API test (set to 1 to run)
+# via command or adding TEST_GH_API to .env file.
+TEST_GH_API=1 deno test --env-file=.env functions/github_client_test.ts
+
+# Run githooks setup
+deno run githooks
+```
+
+```bash
 # Check code quality
-deno task test
+deno run test
 
 # Run specific checks
-deno fmt --check  # Format check
+deno run format # Format all files with --write
 deno lint         # Linting
 deno check manifest.ts  # Type check
 ```
@@ -44,9 +60,9 @@ All PRs must pass CI checks before merging.
 
 ## Running Your Project Locally
 
-While building your app, you can see your changes appear in your workspace in
-real-time with `slack run`. You'll know an app is the development version if the
-name has the string `(local)` appended.
+While building your app, you can see your changes appear in your workspace in real-time with
+`slack run`. You'll know an app is the development version if the name has the string `(local)`
+appended.
 
 ```bash
 # Run app locally
@@ -59,20 +75,18 @@ To stop running locally, press `<CTRL> + C` to end the process.
 
 ## Deploying Your App
 
-Once development is complete, deploy the app to Slack infrastructure using
-`slack deploy`:
+Once development is complete, deploy the app to Slack infrastructure using `slack deploy`:
 
 ```bash
 slack deploy
 ```
 
-When deploying for the first time, you'll be prompted to create a new trigger
-for the deployed version of your app.
+When deploying for the first time, you'll be prompted to create a new trigger for the deployed
+version of your app.
 
 ## Viewing Activity Logs
 
-Activity logs of your application can be viewed live and as they occur with the
-following command:
+Activity logs of your application can be viewed live and as they occur with the following command:
 
 ```bash
 slack activity --tail
@@ -82,40 +96,37 @@ slack activity --tail
 
 ### `.slack/`
 
-Contains `apps.dev.json` and `apps.json`, which include installation details for
-development and deployed apps.
+Contains `apps.dev.json` and `apps.json`, which include installation details for development and
+deployed apps.
 
 ### `datastores/`
 
-[Datastores](https://api.slack.com/automation/datastores) securely store data
-for your application on Slack infrastructure. Required scopes include
-`datastore:write` and `datastore:read`.
+[Datastores](https://api.slack.com/automation/datastores) securely store data for your application
+on Slack infrastructure. Required scopes include `datastore:write` and `datastore:read`.
 
 ### `functions/`
 
-[Functions](https://api.slack.com/automation/functions) are reusable building
-blocks of automation that accept inputs, perform calculations, and provide
-outputs.
+[Functions](https://api.slack.com/automation/functions) are reusable building blocks of automation
+that accept inputs, perform calculations, and provide outputs.
 
 ### `workflows/`
 
-A [workflow](https://api.slack.com/automation/workflows) is a set of steps
-(functions) that are executed in order.
+A [workflow](https://api.slack.com/automation/workflows) is a set of steps (functions) that are
+executed in order.
 
 ### `triggers/`
 
-[Triggers](https://api.slack.com/automation/triggers) determine when workflows
-are run based on events or user actions.
+[Triggers](https://api.slack.com/automation/triggers) determine when workflows are run based on
+events or user actions.
 
 ### `manifest.ts`
 
-The [app manifest](https://api.slack.com/automation/manifest) contains the app's
-configuration, including app name, description, and permissions.
+The [app manifest](https://api.slack.com/automation/manifest) contains the app's configuration,
+including app name, description, and permissions.
 
 ## Contributing
 
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and code
-quality standards.
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and code quality standards.
 
 ## Resources
 
