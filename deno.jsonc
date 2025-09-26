@@ -11,7 +11,9 @@
       "types",
       "views",
       "workflows"
-    ]
+    ],
+    "indentWidth": 2,
+    "lineWidth": 100
   },
   "lint": {
     "include": [
@@ -27,8 +29,8 @@
   },
   "lock": false,
   "tasks": {
-    "test": "deno fmt --check && deno lint && deno test --allow-read",
-    "check": "deno run -A npm:@biomejs/biome check --write"
+    "test": "deno lint && deno test --allow-read",
+    "format": "deno run -A npm:@biomejs/biome check --write"
   },
   "imports": {
     "@biomejs/biome": "npm:@biomejs/biome@^2.2.4",
