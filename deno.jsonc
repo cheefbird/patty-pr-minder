@@ -29,7 +29,7 @@
   },
   "lock": false,
   "tasks": {
-    "test": "deno lint && deno test --allow-read",
+    "test": "deno lint && deno test",
     "format": "deno run -A npm:@biomejs/biome check --write",
     "githooks": "deno run --allow-read=\".\" --allow-write=\".githooks\" --allow-run=\"git\" jsr:@vnphanquang/githooks/bin init"
   },
