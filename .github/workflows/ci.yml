@@ -32,9 +32,6 @@ jobs:
     - name: Run Biome
       run: biome ci .
 
-    - name: Check formatting
-      run: deno fmt --check
-
     - name: Run linter
       run: deno lint
 
