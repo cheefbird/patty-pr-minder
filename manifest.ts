@@ -1,5 +1,7 @@
 import { Manifest } from "deno-slack-sdk/mod.ts";
-import SampleObjectDatastore from "./datastores/sample_datastore.ts";
+import ChannelSettingsDatastore from "./datastores/channel_settings.ts";
+import EventLogsDatastore from "./datastores/event_logs.ts";
+import TrackedPRsDatastore from "./datastores/tracked_prs.ts";
 
 /**
  * The app manifest contains the app's configuration. This
@@ -12,7 +14,7 @@ export default Manifest({
   icon: "assets/default_new_app_icon.png",
   workflows: [], // Will add PR tracking workflows in Phase 2
   outgoingDomains: ["api.github.com"],
-  datastores: [SampleObjectDatastore],
+  datastores: [ChannelSettingsDatastore, TrackedPRsDatastore, EventLogsDatastore],
   botScopes: [
     "commands",
     "chat:write",
