@@ -1,5 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { isValidGitHubPRUrl, type PRUrlInfo, parseGitHubPRUrl, sanitizeUrl } from "./pr_utils.ts";
+import {
+  extractPRUrlsFromMessage,
+  isValidGitHubPRUrl,
+  type PRUrlInfo,
+  parseGitHubPRUrl,
+  sanitizeUrl,
+} from "./pr_utils.ts";
 
 Deno.test("sanitizeUrl - basic URL cleaning", () => {
   assertEquals(
@@ -27,6 +33,23 @@ Deno.test("sanitizeUrl - HTTP to HTTPS upgrade", () => {
   );
 });
 
+Deno.test("sanitizeUrl - canonicalizes common GitHub hosts", () => {
+  assertEquals(
+    sanitizeUrl("https://www.github.com/owner/repo/pull/123"),
+    "https://github.com/owner/repo/pull/123",
+  );
+
+  assertEquals(
+    sanitizeUrl("http://www.github.com/owner/repo/pull/123"),
+    "https://github.com/owner/repo/pull/123",
+  );
+
+  assertEquals(
+    sanitizeUrl("https://api.github.com/repos/owner/repo/pulls/123"),
+    "https://api.github.com/repos/owner/repo/pulls/123",
+  );
+});
+
 Deno.test("sanitizeUrl - tracking parameter removal", () => {
   const urlWithTracking =
     "https://github.com/owner/repo/pull/123?utm_source=slack&utm_medium=message&ref=notification";
@@ -45,6 +68,8 @@ Deno.test("isValidGitHubPRUrl - valid URLs", () => {
     "https://github.com/facebook/react/pull/12345",
     "https://github.com/microsoft/vscode/pull/98765",
     "http://github.com/golang/go/pull/54321", // http should work
+    "https://www.github.com/foo/bar/pull/5",
+    "https://api.github.com/repos/foo/bar/pulls/6",
     "https://github.com/owner/repo/pull/1",
     "https://github.com/test-org/test-repo/pull/999",
     "https://github.com/owner/repo/pull/123#discussion_r456789",
@@ -101,6 +126,8 @@ Deno.test("parseGitHubPRUrl - valid URLs", () => {
       "https://github.com/test-org/test-repo/pull/1",
       { owner: "test-org", repo: "test-repo", number: 1 },
     ],
+    ["https://github.com/a/b/pull/9", { owner: "a", repo: "b", number: 9 }],
+    ["https://www.github.com/foo/bar/pull/25", { owner: "foo", repo: "bar", number: 25 }],
     [
       "https://github.com/owner/repo/pull/123#discussion_r456789",
       { owner: "owner", repo: "repo", number: 123 },
@@ -109,6 +136,7 @@ Deno.test("parseGitHubPRUrl - valid URLs", () => {
       "https://github.com/owner/repo/pull/123/files?tab=files",
       { owner: "owner", repo: "repo", number: 123 },
     ],
+    ["https://api.github.com/repos/baz/qux/pulls/77", { owner: "baz", repo: "qux", number: 77 }],
   ];
 
   testCases.forEach(([url, expected]) => {
@@ -176,4 +204,48 @@ Deno.test("Performance test - parseGitHubPRUrl should be fast", () => {
 
   // Should be well under 1ms per parse
   assertEquals(avgTime < 1, true, `Parsing too slow: ${avgTime}ms`);
+});
+
+Deno.test("extractPRUrlsFromMessage - basic extraction with trailing punctuation", () => {
+  const message = "Please review https://github.com/org/repo/pull/42.";
+  const urls = extractPRUrlsFromMessage(message);
+  assertEquals(urls, ["https://github.com/org/repo/pull/42"]);
+});
+
+Deno.test("extractPRUrlsFromMessage - handles Slack formatted links", () => {
+  const message =
+    "New PRs: <https://github.com/org/repo/pull/99|PR 99> and <https://github.com/foo/bar/pull/100>";
+  const urls = extractPRUrlsFromMessage(message);
+  assertEquals(urls, [
+    "https://github.com/org/repo/pull/99",
+    "https://github.com/foo/bar/pull/100",
+  ]);
+});
+
+Deno.test("extractPRUrlsFromMessage - handles API links", () => {
+  const message =
+    "API link https://api.github.com/repos/org/repo/pulls/222 and https://www.github.com/org/repo/pull/333";
+  const urls = extractPRUrlsFromMessage(message);
+  assertEquals(urls, [
+    "https://github.com/org/repo/pull/222",
+    "https://github.com/org/repo/pull/333",
+  ]);
+});
+
+Deno.test("extractPRUrlsFromMessage - removes duplicates", () => {
+  const message =
+    "Check https://github.com/org/repo/pull/1 and <https://github.com/org/repo/pull/1|duplicate>";
+  const urls = extractPRUrlsFromMessage(message);
+  assertEquals(urls, ["https://github.com/org/repo/pull/1"]);
+});
+
+Deno.test("extractPRUrlsFromMessage - ignores non PR links", () => {
+  const message = "See https://github.com/org/repo/issues/1 for details";
+  const urls = extractPRUrlsFromMessage(message);
+  assertEquals(urls, []);
+});
+
+Deno.test("extractPRUrlsFromMessage - handles non string input", () => {
+  const urls = extractPRUrlsFromMessage(undefined as unknown as string);
+  assertEquals(urls, []);
 });

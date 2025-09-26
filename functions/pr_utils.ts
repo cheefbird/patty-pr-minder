@@ -17,14 +17,56 @@ export interface PRUrlInfo {
  * Supports: http->https upgrade, URL fragments, query parameters
  * Note: Allows any digits, but we validate PR number > 0 in parsing logic
  */
-const GITHUB_PR_URL_PATTERN =
-  /^https?:\/\/github\.com\/([a-zA-Z0-9][a-zA-Z0-9\-_.]{0,38}[a-zA-Z0-9])\/([a-zA-Z0-9][a-zA-Z0-9\-_.]{0,99}[a-zA-Z0-9])\/pull\/(\d+)(?:[/?#][^\s]*)?$/;
+const OWNER_SEGMENT = "[a-zA-Z0-9](?:[a-zA-Z0-9\\-_.]{0,38}[a-zA-Z0-9])?";
+const REPO_SEGMENT = "[a-zA-Z0-9](?:[a-zA-Z0-9\\-_.]{0,99}[a-zA-Z0-9])?";
+
+const GITHUB_PR_UI_URL_PATTERN = new RegExp(
+  `^https?:\\/\\/(?:www\\.)?github\\.com\\/(${OWNER_SEGMENT})\\/(${REPO_SEGMENT})\\/pull\\/(\\d+)(?:[\\/?#][^\\s]*)?$`,
+);
+
+const GITHUB_PR_API_URL_PATTERN = new RegExp(
+  `^https?:\\/\\/api\\.github\\.com\\/repos\\/(${OWNER_SEGMENT})\\/(${REPO_SEGMENT})\\/pulls\\/(\\d+)(?:[\\/?#][^\\s]*)?$`,
+);
 
 /**
  * Quick validation regex for performance optimization
  * Fast check before expensive full parsing
  */
-const GITHUB_URL_QUICK_CHECK = /github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
+const GITHUB_URL_QUICK_CHECK =
+  /(github\.com\/[^/]+\/[^/]+\/pull\/\d+|api\.github\.com\/repos\/[^/]+\/[^/]+\/pulls\/\d+)/;
+
+/**
+ * Message scanning regex for GitHub PR URLs
+ * Matches both Slack-wrapped (<url|text>) and plain URLs in a single pass
+ */
+const GITHUB_PR_MESSAGE_PATTERN =
+  /<https?:\/\/(?:www\.|api\.)?github\.com\/[^>]+(?:\|[^>]+)?>|https?:\/\/(?:www\.|api\.)?github\.com\/[^\s<>]+/gi;
+
+const LEADING_WRAPPER_CHARS = ["(", "[", "{", '"', "'", "`"];
+const TRAILING_WRAPPER_CHARS = [")", "]", "}", ".", ",", "!", "?", ":", ";", '"', "'", "`"];
+
+function matchPRComponents(url: string): PRUrlInfo | null {
+  const uiMatch = GITHUB_PR_UI_URL_PATTERN.exec(url);
+  if (uiMatch) {
+    const [, owner, repo, numberStr] = uiMatch;
+    const number = parseInt(numberStr, 10);
+    if (!Number.isNaN(number) && number > 0) {
+      return { owner: owner.trim(), repo: repo.trim(), number };
+    }
+    return null;
+  }
+
+  const apiMatch = GITHUB_PR_API_URL_PATTERN.exec(url);
+  if (apiMatch) {
+    const [, owner, repo, numberStr] = apiMatch;
+    const number = parseInt(numberStr, 10);
+    if (!Number.isNaN(number) && number > 0) {
+      return { owner: owner.trim(), repo: repo.trim(), number };
+    }
+  }
+
+  return null;
+}
 
 /**
  * Sanitize and normalize URL input
@@ -47,14 +89,19 @@ export function sanitizeUrl(url: string): string {
     }
   }
 
-  // Upgrade http to https for GitHub URLs
-  if (cleaned.startsWith("http://github.com")) {
-    cleaned = cleaned.replace("http://", "https://");
-  }
-
   // Remove common tracking parameters
   try {
     const urlObj = new URL(cleaned);
+    const lowerHost = urlObj.hostname.toLowerCase();
+
+    if (urlObj.protocol === "http:") {
+      urlObj.protocol = "https:";
+    }
+
+    if (lowerHost === "www.github.com") {
+      urlObj.hostname = "github.com";
+    }
+
     const trackingParams = ["utm_source", "utm_medium", "utm_campaign", "ref"];
     trackingParams.forEach((param) => {
       urlObj.searchParams.delete(param);
@@ -87,15 +134,7 @@ export function isValidGitHubPRUrl(url: string): boolean {
     return false;
   }
 
-  // Full pattern validation with PR number check
-  const match = sanitized.match(GITHUB_PR_URL_PATTERN);
-  if (!match) {
-    return false;
-  }
-
-  // Validate PR number is positive
-  const prNumber = parseInt(match[3], 10);
-  return !Number.isNaN(prNumber) && prNumber > 0;
+  return matchPRComponents(sanitized) !== null;
 }
 
 /**
@@ -113,23 +152,73 @@ export function parseGitHubPRUrl(url: string): PRUrlInfo | null {
   }
 
   const sanitized = sanitizeUrl(url);
-  const match = sanitized.match(GITHUB_PR_URL_PATTERN);
+  return matchPRComponents(sanitized);
+}
 
-  if (!match) {
-    return null;
+function stripMessageWrapping(value: string): string {
+  let result = value.trim();
+
+  while (result.length > 0 && LEADING_WRAPPER_CHARS.includes(result[0])) {
+    result = result.slice(1).trimStart();
   }
 
-  const [, owner, repo, numberStr] = match;
-  const number = parseInt(numberStr, 10);
-
-  // Validate parsed components
-  if (!owner || !repo || Number.isNaN(number) || number <= 0) {
-    return null;
+  while (result.length > 0 && TRAILING_WRAPPER_CHARS.includes(result[result.length - 1])) {
+    result = result.slice(0, -1).trimEnd();
   }
 
-  return {
-    owner: owner.trim(),
-    repo: repo.trim(),
-    number,
-  };
+  return result;
+}
+
+function normalizeCandidateUrl(rawCandidate: string): string | null {
+  const candidate = stripMessageWrapping(rawCandidate);
+
+  // Sanitize and validate immediately
+  const sanitized = sanitizeUrl(candidate);
+  const prInfo = parseGitHubPRUrl(sanitized);
+  if (prInfo) {
+    return `https://github.com/${prInfo.owner}/${prInfo.repo}/pull/${prInfo.number}`;
+  }
+
+  // Attempt to recover by progressively trimming trailing wrapper characters
+  let trimmed = candidate;
+  while (trimmed.length > 0 && TRAILING_WRAPPER_CHARS.includes(trimmed[trimmed.length - 1])) {
+    trimmed = trimmed.slice(0, -1).trimEnd();
+    const retrySanitized = sanitizeUrl(trimmed);
+    const retryInfo = parseGitHubPRUrl(retrySanitized);
+    if (retryInfo) {
+      return `https://github.com/${retryInfo.owner}/${retryInfo.repo}/pull/${retryInfo.number}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract GitHub PR URLs from a Slack message.
+ * Handles Slack formatting (<url|text>), multiple URLs, and duplicate filtering.
+ */
+export function extractPRUrlsFromMessage(text: string): string[] {
+  if (typeof text !== "string") {
+    return [];
+  }
+
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || !trimmed.includes("github.com")) {
+    return [];
+  }
+
+  const matches = trimmed.matchAll(GITHUB_PR_MESSAGE_PATTERN);
+  const deduped = new Set<string>();
+  const results: string[] = [];
+
+  for (const match of matches) {
+    const normalized = normalizeCandidateUrl(match[0]);
+    if (!normalized || deduped.has(normalized)) {
+      continue;
+    }
+    deduped.add(normalized);
+    results.push(normalized);
+  }
+
+  return results;
 }
