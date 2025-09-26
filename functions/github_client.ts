@@ -27,16 +27,8 @@ export interface PRData {
 }
 
 export interface GitHubClient {
-  fetchPR(
-    owner: string,
-    repo: string,
-    prNumber: number,
-  ): Promise<PRData | null>;
-  fetchPRs(
-    owner: string,
-    repo: string,
-    options?: FetchPROptions,
-  ): Promise<PRData[]>;
+  fetchPR(owner: string, repo: string, prNumber: number): Promise<PRData | null>;
+  fetchPRs(owner: string, repo: string, options?: FetchPROptions): Promise<PRData[]>;
   validateToken(): Promise<boolean>;
   getRateLimit(): Promise<RateLimitInfo | null>;
 }
@@ -99,20 +91,13 @@ export function createGitHubClient(config: GitHubConfig = {}): GitHubClient {
     }
   };
 
-  const request = async <T>(
-    path: string,
-    init: RequestInit = {},
-  ): Promise<T> => {
+  const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     ensureToken();
     await respectRateLimit(state.rateLimit);
     return await attemptRequest<T>(path, init, state, 1);
   };
 
-  const fetchPR = async (
-    owner: string,
-    repo: string,
-    prNumber: number,
-  ): Promise<PRData | null> => {
+  const fetchPR = async (owner: string, repo: string, prNumber: number): Promise<PRData | null> => {
     const path = buildPRPath(owner, repo, prNumber);
     const cacheKey = cache.enabled ? buildCacheKey("pr", path) : null;
 
@@ -246,8 +231,8 @@ async function attemptRequest<T>(
     }
 
     const errorBody = await parseErrorBody(response);
-    const errorMessage = extractErrorMessage(errorBody) ??
-      `GitHub request failed with status ${response.status}`;
+    const errorMessage =
+      extractErrorMessage(errorBody) ?? `GitHub request failed with status ${response.status}`;
     const documentationUrl = extractDocumentationUrl(errorBody);
 
     const error = createErrorForStatus(
@@ -312,29 +297,11 @@ function createErrorForStatus(
 ): GitHubRequestError {
   switch (status) {
     case 401:
-      return new GitHubUnauthorizedError(
-        message,
-        status,
-        statusText,
-        documentationUrl,
-        errorBody,
-      );
+      return new GitHubUnauthorizedError(message, status, statusText, documentationUrl, errorBody);
     case 403:
-      return new GitHubForbiddenError(
-        message,
-        status,
-        statusText,
-        documentationUrl,
-        errorBody,
-      );
+      return new GitHubForbiddenError(message, status, statusText, documentationUrl, errorBody);
     case 404:
-      return new GitHubNotFoundError(
-        message,
-        status,
-        statusText,
-        documentationUrl,
-        errorBody,
-      );
+      return new GitHubNotFoundError(message, status, statusText, documentationUrl, errorBody);
     case 422:
       return new GitHubUnprocessableEntityError(
         message,
@@ -345,21 +312,9 @@ function createErrorForStatus(
       );
     default:
       if (status >= 500) {
-        return new GitHubServerError(
-          message,
-          status,
-          statusText,
-          documentationUrl,
-          errorBody,
-        );
+        return new GitHubServerError(message, status, statusText, documentationUrl, errorBody);
       }
-      return new GitHubRequestError(
-        message,
-        status,
-        statusText,
-        documentationUrl,
-        errorBody,
-      );
+      return new GitHubRequestError(message, status, statusText, documentationUrl, errorBody);
   }
 }
 
@@ -392,19 +347,14 @@ function shouldRetry(
     return rateLimit?.remaining === 0;
   }
 
-  if (
-    error instanceof GitHubServerError || error instanceof GitHubTimeoutError
-  ) {
+  if (error instanceof GitHubServerError || error instanceof GitHubTimeoutError) {
     return true;
   }
 
   return error.status >= 500;
 }
 
-function nextBackoffDelay(
-  attempt: number,
-  rateLimit: RateLimitInfo | null,
-): number {
+function nextBackoffDelay(attempt: number, rateLimit: RateLimitInfo | null): number {
   const backoff = BASE_BACKOFF_MS * 2 ** (attempt - 1);
   if (rateLimit && rateLimit.remaining === 0) {
     const now = Date.now();
@@ -414,17 +364,12 @@ function nextBackoffDelay(
   return backoff;
 }
 
-async function respectRateLimit(
-  rateLimit: RateLimitInfo | null,
-): Promise<void> {
+async function respectRateLimit(rateLimit: RateLimitInfo | null): Promise<void> {
   if (!rateLimit || rateLimit.remaining > 0) {
     return;
   }
 
-  const delayMs = Math.max(
-    rateLimit.reset * 1_000 - Date.now(),
-    BASE_BACKOFF_MS,
-  );
+  const delayMs = Math.max(rateLimit.reset * 1_000 - Date.now(), BASE_BACKOFF_MS);
   if (delayMs > 0) {
     await delay(delayMs);
   }
@@ -436,20 +381,12 @@ function normalizeBaseURL(baseURL: string): string {
 
 function sanitizeIdentifier(value: string, field: "owner" | "repo"): string {
   if (!value || typeof value !== "string") {
-    throw new GitHubRequestError(
-      `Invalid ${field} provided.`,
-      422,
-      "Unprocessable Entity",
-    );
+    throw new GitHubRequestError(`Invalid ${field} provided.`, 422, "Unprocessable Entity");
   }
 
   const sanitized = value.trim();
   if (!sanitized.length) {
-    throw new GitHubRequestError(
-      `${field} cannot be empty.`,
-      422,
-      "Unprocessable Entity",
-    );
+    throw new GitHubRequestError(`${field} cannot be empty.`, 422, "Unprocessable Entity");
   }
 
   if (!/^[A-Za-z0-9_.-]+$/.test(sanitized)) {
@@ -474,11 +411,7 @@ function sanitizePRNumber(prNumber: number): number {
   return prNumber;
 }
 
-function buildPRPath(
-  owner: string,
-  repo: string,
-  prNumber?: number,
-): string {
+function buildPRPath(owner: string, repo: string, prNumber?: number): string {
   const sanitizedOwner = sanitizeIdentifier(owner, "owner");
   const sanitizedRepo = sanitizeIdentifier(repo, "repo");
 
@@ -542,8 +475,7 @@ function extractErrorMessage(body: unknown): string | null {
 
 function extractDocumentationUrl(body: unknown): string | undefined {
   if (body && typeof body === "object" && "documentation_url" in body) {
-    const documentationUrl =
-      (body as { documentation_url?: unknown }).documentation_url;
+    const documentationUrl = (body as { documentation_url?: unknown }).documentation_url;
     return typeof documentationUrl === "string" ? documentationUrl : undefined;
   }
   return undefined;
@@ -580,10 +512,7 @@ function buildCacheKey(...parts: (string | number)[]): string {
   return parts.map((part) => String(part)).join("::");
 }
 
-function getCachedValue<T>(
-  cache: ResponseCache,
-  key: string,
-): T | undefined {
+function getCachedValue<T>(cache: ResponseCache, key: string): T | undefined {
   if (!cache.enabled) {
     return undefined;
   }
@@ -601,11 +530,7 @@ function getCachedValue<T>(
   return entry.value as T;
 }
 
-function setCachedValue<T>(
-  cache: ResponseCache,
-  key: string,
-  value: T,
-): void {
+function setCachedValue<T>(cache: ResponseCache, key: string, value: T): void {
   if (!cache.enabled) {
     return;
   }
