@@ -7,9 +7,6 @@ on:
     branches: [ main ]
   workflow_dispatch: # Allow manual workflow runs
 
-env:
-  DENO_VERSION: "2.x"
-
 jobs:
   test:
     name: Code Quality & Testing
@@ -19,10 +16,9 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Deno
-      uses: denoland/setup-deno@v1
+    - uses: denoland/setup-deno@v2
       with:
-        deno-version: ${{ env.DENO_VERSION }}
+        deno-version: v2.x
     
     - name: Setup Biome
       uses: biomejs/setup-biome@v2
@@ -44,8 +40,10 @@ jobs:
         find . -name "*.ts" -not -path "./node_modules/*" -not -path "./.git/*" | xargs -r deno check
 
     - name: Run tests
+      env:
+        TEST_GH_API: 0
       run: |
-        if deno task test; then
+        if deno test --allow-env; then
           echo "✅ Tests passed"
         elif [ $? -eq 1 ] && [[ $(deno test 2>&1) == *"No test modules found"* ]]; then
           echo "ℹ️  No tests found - this is expected during early development"
