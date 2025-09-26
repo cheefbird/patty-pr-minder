@@ -30,7 +30,8 @@
   "lock": false,
   "tasks": {
     "test": "deno lint && deno test --allow-read",
-    "format": "deno run -A npm:@biomejs/biome check --write"
+    "format": "deno run -A npm:@biomejs/biome check --write",
+    "githooks": "deno run --allow-read=\".\" --allow-write=\".githooks\" --allow-run=\"git\" jsr:@vnphanquang/githooks/bin init"
   },
   "imports": {
     "@biomejs/biome": "npm:@biomejs/biome@^2.2.4",
