@@ -8,8 +8,8 @@ import { DefineDatastore, Schema } from "deno-slack-sdk/mod.ts";
  * Safe delimiter (::) prevents collision attacks from malicious repo names.
  *
  * Key Generation Utility (implement in application code):
- * const createTrackedPRId = (channelId: string, owner: string, repo: string, number: number) =>
- *   `${channelId}::${owner}::${repo}::${number}`;
+ * const createTrackedPRId = (channel_id: string, owner: string, repo: string, number: number) =>
+ *   `${channel_id}::${owner}::${repo}::${number}`;
  */
 const TrackedPRsDatastore = DefineDatastore({
   name: "TrackedPRs",
