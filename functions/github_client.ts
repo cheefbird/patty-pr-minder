@@ -201,7 +201,7 @@ async function attemptRequest<T>(
   const url = new URL(path, state.config.baseURL);
   const headers = new Headers(init.headers ?? {});
 
-  headers.set("Authorization", `token ${state.config.token}`);
+  headers.set("Authorization", `Bearer ${state.config.token}`);
   headers.set("Accept", "application/vnd.github+json");
   headers.set("User-Agent", state.config.userAgent);
 
