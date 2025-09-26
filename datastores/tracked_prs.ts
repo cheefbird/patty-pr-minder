@@ -4,11 +4,16 @@ import { DefineDatastore, Schema } from "deno-slack-sdk/mod.ts";
  * Tracked PRs Datastore
  *
  * Stores GitHub PR metadata and tracking information for each channel.
- * Uses composite primary key format: "${channel_id}-${owner}-${repo}-${number}"
+ * Uses composite primary key format: "${channel_id}::${owner}::${repo}::${number}"
+ * Safe delimiter (::) prevents collision attacks from malicious repo names.
+ *
+ * Key Generation Utility (implement in application code):
+ * const createTrackedPRId = (channelId: string, owner: string, repo: string, number: number) =>
+ *   `${channelId}::${owner}::${repo}::${number}`;
  */
 const TrackedPRsDatastore = DefineDatastore({
   name: "TrackedPRs",
-  primary_key: "id", // Format: "${channel_id}-${owner}-${repo}-${number}"
+  primary_key: "id", // Format: "${channel_id}::${owner}::${repo}::${number}"
   attributes: {
     id: { type: Schema.types.string },
     channel_id: { type: Schema.slack.types.channel_id },
