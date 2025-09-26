@@ -370,9 +370,7 @@ async function respectRateLimit(rateLimit: RateLimitInfo | null): Promise<void> 
   }
 
   const delayMs = Math.max(rateLimit.reset * 1_000 - Date.now(), BASE_BACKOFF_MS);
-  if (delayMs > 0) {
-    await delay(delayMs);
-  }
+  await delay(delayMs);
 }
 
 function normalizeBaseURL(baseURL: string): string {
