@@ -19,7 +19,7 @@
 ## Coding Style & Naming Conventions
 - Formatting is managed by Deno fmt with 2-space indents and double quotes, as enforced by `biome.json`.
 - Prefer explicit TypeScript exports (`PascalCase` types, `camelCase` functions, `SCREAMING_SNAKE_CASE` constants).
-- Keep modules narrowly scoped—datastore helpers should live beside their schema files.
+- Keep modules narrowly scoped - datastore helpers should live beside their schema files.
 - Document non-obvious logic with concise inline comments; reserve block comments for multi-step flows.
 
 ## Testing Guidelines
