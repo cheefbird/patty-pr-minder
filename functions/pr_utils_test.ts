@@ -43,11 +43,6 @@ Deno.test("sanitizeUrl - canonicalizes common GitHub hosts", () => {
     sanitizeUrl("http://www.github.com/owner/repo/pull/123"),
     "https://github.com/owner/repo/pull/123",
   );
-
-  assertEquals(
-    sanitizeUrl("https://api.github.com/repos/owner/repo/pulls/123"),
-    "https://api.github.com/repos/owner/repo/pulls/123",
-  );
 });
 
 Deno.test("sanitizeUrl - tracking parameter removal", () => {
@@ -69,7 +64,6 @@ Deno.test("isValidGitHubPRUrl - valid URLs", () => {
     "https://github.com/microsoft/vscode/pull/98765",
     "http://github.com/golang/go/pull/54321", // http should work
     "https://www.github.com/foo/bar/pull/5",
-    "https://api.github.com/repos/foo/bar/pulls/6",
     "https://github.com/owner/repo/pull/1",
     "https://github.com/test-org/test-repo/pull/999",
     "https://github.com/owner/repo/pull/123#discussion_r456789",
@@ -136,7 +130,6 @@ Deno.test("parseGitHubPRUrl - valid URLs", () => {
       "https://github.com/owner/repo/pull/123/files?tab=files",
       { owner: "owner", repo: "repo", number: 123 },
     ],
-    ["https://api.github.com/repos/baz/qux/pulls/77", { owner: "baz", repo: "qux", number: 77 }],
   ];
 
   testCases.forEach(([url, expected]) => {
@@ -206,8 +199,8 @@ Deno.test("Performance test - parseGitHubPRUrl should be fast", () => {
   assertEquals(avgTime < 1, true, `Parsing too slow: ${avgTime}ms`);
 });
 
-Deno.test("extractPRUrlsFromMessage - basic extraction with trailing punctuation", () => {
-  const message = "Please review https://github.com/org/repo/pull/42.";
+Deno.test("extractPRUrlsFromMessage - basic extraction", () => {
+  const message = "Please review https://github.com/org/repo/pull/42 today";
   const urls = extractPRUrlsFromMessage(message);
   assertEquals(urls, ["https://github.com/org/repo/pull/42"]);
 });
@@ -222,14 +215,10 @@ Deno.test("extractPRUrlsFromMessage - handles Slack formatted links", () => {
   ]);
 });
 
-Deno.test("extractPRUrlsFromMessage - handles API links", () => {
-  const message =
-    "API link https://api.github.com/repos/org/repo/pulls/222 and https://www.github.com/org/repo/pull/333";
+Deno.test("extractPRUrlsFromMessage - handles www.github.com links", () => {
+  const message = "Check out https://www.github.com/org/repo/pull/333";
   const urls = extractPRUrlsFromMessage(message);
-  assertEquals(urls, [
-    "https://github.com/org/repo/pull/222",
-    "https://github.com/org/repo/pull/333",
-  ]);
+  assertEquals(urls, ["https://github.com/org/repo/pull/333"]);
 });
 
 Deno.test("extractPRUrlsFromMessage - removes duplicates", () => {
@@ -248,4 +237,33 @@ Deno.test("extractPRUrlsFromMessage - ignores non PR links", () => {
 Deno.test("extractPRUrlsFromMessage - handles non string input", () => {
   const urls = extractPRUrlsFromMessage(undefined as unknown as string);
   assertEquals(urls, []);
+});
+
+Deno.test("extractPRUrlsFromMessage - performance with large messages", () => {
+  // Test with realistic large Slack message (thread with multiple PRs)
+  const largePRList = Array.from(
+    { length: 20 },
+    (_, i) => `https://github.com/repo${i}/project/pull/${i + 1}`,
+  ).join(" ");
+  const message = `Daily standup update: ${largePRList} - please review these PRs`;
+
+  const start = performance.now();
+  const urls = extractPRUrlsFromMessage(message);
+  const end = performance.now();
+
+  assertEquals(urls.length, 20);
+  assertEquals(end - start < 5, true, `Message parsing too slow: ${end - start}ms`);
+});
+
+Deno.test("extractPRUrlsFromMessage - performance with no URLs", () => {
+  const longMessage =
+    "This is a very long message with lots of text ".repeat(100) +
+    "but no GitHub URLs anywhere in the content at all";
+
+  const start = performance.now();
+  const urls = extractPRUrlsFromMessage(longMessage);
+  const end = performance.now();
+
+  assertEquals(urls, []);
+  assertEquals(end - start < 1, true, `Non-URL message too slow: ${end - start}ms`);
 });

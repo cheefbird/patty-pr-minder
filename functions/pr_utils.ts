@@ -20,51 +20,32 @@ export interface PRUrlInfo {
 const OWNER_SEGMENT = "[a-zA-Z0-9](?:[a-zA-Z0-9\\-_.]{0,38}[a-zA-Z0-9])?";
 const REPO_SEGMENT = "[a-zA-Z0-9](?:[a-zA-Z0-9\\-_.]{0,99}[a-zA-Z0-9])?";
 
-const GITHUB_PR_UI_URL_PATTERN = new RegExp(
+const GITHUB_PR_URL_PATTERN = new RegExp(
   `^https?:\\/\\/(?:www\\.)?github\\.com\\/(${OWNER_SEGMENT})\\/(${REPO_SEGMENT})\\/pull\\/(\\d+)(?:[\\/?#][^\\s]*)?$`,
-);
-
-const GITHUB_PR_API_URL_PATTERN = new RegExp(
-  `^https?:\\/\\/api\\.github\\.com\\/repos\\/(${OWNER_SEGMENT})\\/(${REPO_SEGMENT})\\/pulls\\/(\\d+)(?:[\\/?#][^\\s]*)?$`,
 );
 
 /**
  * Quick validation regex for performance optimization
  * Fast check before expensive full parsing
  */
-const GITHUB_URL_QUICK_CHECK =
-  /(github\.com\/[^/]+\/[^/]+\/pull\/\d+|api\.github\.com\/repos\/[^/]+\/[^/]+\/pulls\/\d+)/;
+const GITHUB_URL_QUICK_CHECK = /github\.com\/[^/]+\/[^/]+\/pull\/\d+/;
 
 /**
  * Message scanning regex for GitHub PR URLs
  * Matches both Slack-wrapped (<url|text>) and plain URLs in a single pass
  */
 const GITHUB_PR_MESSAGE_PATTERN =
-  /<https?:\/\/(?:www\.|api\.)?github\.com\/[^>]+(?:\|[^>]+)?>|https?:\/\/(?:www\.|api\.)?github\.com\/[^\s<>]+/gi;
-
-const LEADING_WRAPPER_CHARS = ["(", "[", "{", '"', "'", "`"];
-const TRAILING_WRAPPER_CHARS = [")", "]", "}", ".", ",", "!", "?", ":", ";", '"', "'", "`"];
+  /<https?:\/\/(?:www\.)?github\.com\/[^>]+(?:\|[^>]+)?>|https?:\/\/(?:www\.)?github\.com\/[^\s<>]+/gi;
 
 function matchPRComponents(url: string): PRUrlInfo | null {
-  const uiMatch = GITHUB_PR_UI_URL_PATTERN.exec(url);
-  if (uiMatch) {
-    const [, owner, repo, numberStr] = uiMatch;
-    const number = parseInt(numberStr, 10);
-    if (!Number.isNaN(number) && number > 0) {
-      return { owner: owner.trim(), repo: repo.trim(), number };
-    }
-    return null;
-  }
-
-  const apiMatch = GITHUB_PR_API_URL_PATTERN.exec(url);
-  if (apiMatch) {
-    const [, owner, repo, numberStr] = apiMatch;
+  const match = GITHUB_PR_URL_PATTERN.exec(url);
+  if (match) {
+    const [, owner, repo, numberStr] = match;
     const number = parseInt(numberStr, 10);
     if (!Number.isNaN(number) && number > 0) {
       return { owner: owner.trim(), repo: repo.trim(), number };
     }
   }
-
   return null;
 }
 
@@ -155,41 +136,12 @@ export function parseGitHubPRUrl(url: string): PRUrlInfo | null {
   return matchPRComponents(sanitized);
 }
 
-function stripMessageWrapping(value: string): string {
-  let result = value.trim();
-
-  while (result.length > 0 && LEADING_WRAPPER_CHARS.includes(result[0])) {
-    result = result.slice(1).trimStart();
-  }
-
-  while (result.length > 0 && TRAILING_WRAPPER_CHARS.includes(result[result.length - 1])) {
-    result = result.slice(0, -1).trimEnd();
-  }
-
-  return result;
-}
-
 function normalizeCandidateUrl(rawCandidate: string): string | null {
-  const candidate = stripMessageWrapping(rawCandidate);
-
-  // Sanitize and validate immediately
-  const sanitized = sanitizeUrl(candidate);
+  const sanitized = sanitizeUrl(rawCandidate);
   const prInfo = parseGitHubPRUrl(sanitized);
   if (prInfo) {
     return `https://github.com/${prInfo.owner}/${prInfo.repo}/pull/${prInfo.number}`;
   }
-
-  // Attempt to recover by progressively trimming trailing wrapper characters
-  let trimmed = candidate;
-  while (trimmed.length > 0 && TRAILING_WRAPPER_CHARS.includes(trimmed[trimmed.length - 1])) {
-    trimmed = trimmed.slice(0, -1).trimEnd();
-    const retrySanitized = sanitizeUrl(trimmed);
-    const retryInfo = parseGitHubPRUrl(retrySanitized);
-    if (retryInfo) {
-      return `https://github.com/${retryInfo.owner}/${retryInfo.repo}/pull/${retryInfo.number}`;
-    }
-  }
-
   return null;
 }
 
